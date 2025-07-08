@@ -188,7 +188,9 @@ def dataset_type_select_reflash(manager, module, elem):
         return new_text, None
 
     select_dataset_type.change(
-        fn=add_selection, inputs=[select_dataset_type, dataset_type], outputs=[dataset_type, select_dataset_type]
+        fn=add_selection,
+        inputs=[select_dataset_type, dataset_type],
+        outputs=[dataset_type, select_dataset_type],
     )
 
 
@@ -211,10 +213,14 @@ def train_epochs_change(manager):
 
         pass
 
-    num_train_epochs.change(fn=on_num_train_epochs_change, inputs=[max_steps], outputs=[])
+    num_train_epochs.change(
+        fn=on_num_train_epochs_change, inputs=[max_steps], outputs=[]
+    )
 
 
-def reflash_existed_dataset_path_prob(manager, section, dataset_id, path_id, prob_id, type_id):
+def reflash_existed_dataset_path_prob(
+    manager, section, dataset_id, path_id, prob_id, type_id
+):
     """
     Refresh the probability configuration for existing dataset paths based on type changes.
 
@@ -240,23 +246,28 @@ def reflash_existed_dataset_path_prob(manager, section, dataset_id, path_id, pro
         for dataset_name in dataset_names:
             info = config.get_dataset_info_kwagrs(dataset_name)
             if info is not None:
-
                 path = info.get("path")
                 prob = info.get("prob")
                 type = info.get("type")
 
                 if path is None:
-                    path_error_msg = alert.get("preview_data_non_path", "warning").format(dataset_name)
+                    path_error_msg = alert.get(
+                        "preview_data_non_path", "warning"
+                    ).format(dataset_name)
                     print(path_error_msg)
                     gr.Warning(path_error_msg)
                     continue
                 if prob is None:
-                    prob_error_msg = alert.get("preview_data_non_prob", "warning").format(dataset_name)
+                    prob_error_msg = alert.get(
+                        "preview_data_non_prob", "warning"
+                    ).format(dataset_name)
                     gr.Warning(prob_error_msg)
                     print(prob_error_msg)
                     continue
                 if type is None:
-                    type_error_msg = alert.get("preview_data_non_type", "warning").format(dataset_name)
+                    type_error_msg = alert.get(
+                        "preview_data_non_type", "warning"
+                    ).format(dataset_name)
                     gr.Warning(type_error_msg)
                     print(type_error_msg)
                     continue
@@ -269,9 +280,15 @@ def reflash_existed_dataset_path_prob(manager, section, dataset_id, path_id, pro
         type_str = ", ".join(types)
         prob_str = ", ".join([str(p) for p in probs])
 
-        return gr.update(value=path_str), gr.update(value=prob_str), gr.update(value=type_str)
+        return (
+            gr.update(value=path_str),
+            gr.update(value=prob_str),
+            gr.update(value=type_str),
+        )
 
-    dataset.change(fn=update_path_prob, inputs=[dataset], outputs=[path_elem, prob_elem, type_elem])
+    dataset.change(
+        fn=update_path_prob, inputs=[dataset], outputs=[path_elem, prob_elem, type_elem]
+    )
 
 
 def react_preview_dataset_button(manager, preview_button, module, elem_id):
@@ -316,8 +333,12 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
             next_dataset_btn = gr.Button("下组数据集", size="lg", visible=False)
 
     def get_data_paths():
-        user_data_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset_path")
-        default_data_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset")
+        user_data_path_value = manager.get_component_value(
+            module_id=module, elem_id=f"{elem_id}_dataset_path"
+        )
+        default_data_path_value = manager.get_component_value(
+            module_id=module, elem_id=f"{elem_id}_dataset"
+        )
 
         if default_data_path_value is not None and default_data_path_value:
             return [common.DEFAULT_DATASET_PATH]
@@ -337,7 +358,9 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
                 if os.path.exists(full_path):
                     data_paths.append(full_path)
                 else:
-                    preview_data_non_existent = alert.get("preview_data_non_existent", "error").format(path)
+                    preview_data_non_existent = alert.get(
+                        "preview_data_non_existent", "error"
+                    ).format(path)
                     print(preview_data_non_existent)
                     gr.Warning(preview_data_non_existent)
 
@@ -363,15 +386,21 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
                     data = json.load(f)
                     all_data.extend(data)
         except FileNotFoundError as fe:
-            preview_data_error = alert.get("preview_data_error", "error").format(path, fe)
+            preview_data_error = alert.get("preview_data_error", "error").format(
+                path, fe
+            )
             print(preview_data_error)
             raise gr.Error(preview_data_error)
         except json.JSONDecodeError:
-            preview_data_non_json = alert.get("preview_data_non_json", "error").format(path)
+            preview_data_non_json = alert.get("preview_data_non_json", "error").format(
+                path
+            )
             print(preview_data_non_json)
             gr.Warning(preview_data_non_json)
         except Exception as e:
-            preview_data_error = alert.get("preview_data_error", "error").format(path, e)
+            preview_data_error = alert.get("preview_data_error", "error").format(
+                path, e
+            )
             print(preview_data_error)
             raise gr.Error(preview_data_error)
 
@@ -391,21 +420,33 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
         start_idx = (safe_page - 1) * page_size
         end_idx = start_idx + page_size
 
-        return all_data[start_idx:end_idx], total, cutoff_page, dataset_index, len(data_paths), path
+        return (
+            all_data[start_idx:end_idx],
+            total,
+            cutoff_page,
+            dataset_index,
+            len(data_paths),
+            path,
+        )
 
     def keep_last_five_levels(path_str):
-        parts = path_str.strip('/').split('/')
+        parts = path_str.strip("/").split("/")
         if len(parts) <= 5:
-            return '/' + path_str.strip('/')
+            return "/" + path_str.strip("/")
         else:
-            return '/' + '/'.join(parts[-5:])
+            return "/" + "/".join(parts[-5:])
 
     def show_popup(language, page_number, dataset_index):
         page = int(page_number) if isinstance(page_number, str) else page_number
         data_paths = get_data_paths()
-        data, total_records, cutoff_page, current_dataset, total_datasets, current_path = load_data(
-            data_paths, dataset_index=dataset_index, page=page, page_size=10
-        )
+        (
+            data,
+            total_records,
+            cutoff_page,
+            current_dataset,
+            total_datasets,
+            current_path,
+        ) = load_data(data_paths, dataset_index=dataset_index, page=page, page_size=10)
 
         total_pages = max(1, (total_records + 9) // 10)
 
@@ -415,8 +456,12 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
 
         has_multiple_datasets = total_datasets > 1
         show_prev_dataset = has_multiple_datasets and current_dataset > 0
-        show_next_dataset = has_multiple_datasets and current_dataset < total_datasets - 1
-        page_info_text = la.get("page_info", language, "value").format(page, total_pages)
+        show_next_dataset = (
+            has_multiple_datasets and current_dataset < total_datasets - 1
+        )
+        page_info_text = la.get("page_info", language, "value").format(
+            page, total_pages
+        )
 
         return (
             gr.Column(visible=True),
@@ -451,7 +496,9 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
         return show_popup(language, page_num, dataset_index)
 
     def on_preview_check(language, current_page, current_dataset_index):
-        dataset_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset_path")
+        dataset_path_value = manager.get_component_value(
+            module_id=module, elem_id=f"{elem_id}_dataset_path"
+        )
         if dataset_path_value == "" or dataset_path_value is None:
             gr.Warning(alert.get("preview_data_path_none", "warning"))
             return hide_popup()
@@ -626,14 +673,20 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
     )
 
     def update_language(language):
-        dataset_preview_title_la = la.get(key="dataset_preview_title", lang=language, prop="value")
+        dataset_preview_title_la = la.get(
+            key="dataset_preview_title", lang=language, prop="value"
+        )
         page_info_la = la.get(key="page_info", lang=language, prop="value")
         dataset_info_la = la.get(key="dataset_info", lang=language, prop="value")
         next_btn_la = la.get(key="next_btn", lang=language, prop="value")
         prev_btn_la = la.get(key="prev_btn", lang=language, prop="value")
         close_button_la = la.get(key="close_button", lang=language, prop="value")
-        prev_dataset_btn_la = la.get(key="prev_dataset_btn", lang=language, prop="value")
-        next_dataset_btn_la = la.get(key="next_dataset_btn", lang=language, prop="value")
+        prev_dataset_btn_la = la.get(
+            key="prev_dataset_btn", lang=language, prop="value"
+        )
+        next_dataset_btn_la = la.get(
+            key="next_dataset_btn", lang=language, prop="value"
+        )
 
         return (
             dataset_preview_title_la,
@@ -711,9 +764,13 @@ def train_specific_elem_change(manager):
         manager.set_specific_component_value("train", "eval_dataset", inputs)
         return gr.update(value=inputs)
 
-    train_dataset.change(fn=update_train_dataset_data, inputs=[train_dataset], outputs=[train_dataset])
+    train_dataset.change(
+        fn=update_train_dataset_data, inputs=[train_dataset], outputs=[train_dataset]
+    )
 
-    eval_dataset.change(fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset])
+    eval_dataset.change(
+        fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset]
+    )
 
     language.change(
         fn=update_specific_elem_dropdown,
@@ -741,9 +798,13 @@ def eval_specific_elem_change(manager):
         manager.set_specific_component_value("eval", "eval_dataset", inputs)
         return gr.update(value=inputs)
 
-    eval_dataset.change(fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset])
+    eval_dataset.change(
+        fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset]
+    )
 
-    language.change(fn=update_specific_elem_dropdown, inputs=[language], outputs=[eval_dataset])
+    language.change(
+        fn=update_specific_elem_dropdown, inputs=[language], outputs=[eval_dataset]
+    )
 
 
 def setup_model_name_or_path_update(manager):
@@ -759,25 +820,32 @@ def setup_model_name_or_path_update(manager):
     model_source = manager.get_elem_by_id("basic", "model_source")
 
     def update_path(selected_model, select):
-
         if selected_model == "Customization":
             gr.Info(alert.get("custom_model_notice", "info"))
             return (
                 gr.update(interactive=True, value=""),
-                gr.update(value="Local", choices=config.get_choices_kwargs("model_source_custom")),
+                gr.update(
+                    value="Local",
+                    choices=config.get_choices_kwargs("model_source_custom"),
+                ),
             )
 
         if config.is_thought_model(selected_model):
             gr.Info(alert.get("thought_model_notice", "info"))
 
-        path = config.get_model_name_or_path(selected_model, select.replace(" ", "_").lower())
+        path = config.get_model_name_or_path(
+            selected_model, select.replace(" ", "_").lower()
+        )
 
         manager._component_values["basic"]["model_name_or_path"] = path
-        return path, gr.update(value="Local", choices=config.get_choices_kwargs("model_source_ernie"))
+        return path, gr.update(
+            value="Local", choices=config.get_choices_kwargs("model_source_ernie")
+        )
 
     def update_path_selector(selected_model, model_source_value):
-
-        path = config.get_model_name_or_path(selected_model, model_source_value.replace(" ", "_").lower())
+        path = config.get_model_name_or_path(
+            selected_model, model_source_value.replace(" ", "_").lower()
+        )
 
         manager._component_values["basic"]["model_name_or_path"] = path
         return path
@@ -788,7 +856,11 @@ def setup_model_name_or_path_update(manager):
         outputs=[model_name_or_path, model_source],
     )
 
-    model_source.change(fn=update_path_selector, inputs=[model_name, model_source], outputs=[model_name_or_path])
+    model_source.change(
+        fn=update_path_selector,
+        inputs=[model_name, model_source],
+        outputs=[model_name_or_path],
+    )
 
 
 def reflash_compute_type_by_fine_tuning(manager):
@@ -806,7 +878,6 @@ def reflash_compute_type_by_fine_tuning(manager):
     last_update_time = [0]
 
     def update_choices(fine_tuning_value):
-
         current_time = time.time()
         last_update_time[0] = current_time
 
@@ -859,7 +930,6 @@ def setup_preview_button(manager, module):
         )
 
     def module_command_preview(stage):
-
         if module == "train":
             execute_path = f"train_{stage.lower()}_yaml_path"
         else:
@@ -867,7 +937,9 @@ def setup_preview_button(manager, module):
 
         update_config_yaml(manager, execute_path, module, True)
 
-        return common.yaml_to_args(config.get_execute_yaml_path(execute_path), config.get_commands_cli(module))
+        return common.yaml_to_args(
+            config.get_execute_yaml_path(execute_path), config.get_commands_cli(module)
+        )
 
     if preview_command_btn and command_preview and output_text and output_container:
         preview_command_btn.click(
@@ -904,14 +976,15 @@ def chat_load_model_button(manager, runner):
     save_port = manager.get_elem_by_id("chat", "save_port")
 
     async def chat_start_execution(port):
-
         update_config_yaml(manager, "chat_yaml_path", "chat")
 
         command = config.get_execute_command("chat")
         async for output in execute_command(runner, command):
             yield output, gr.update(value=port)
 
-    load_model_btn.click(fn=chat_start_execution, inputs=[port], outputs=[output_text, save_port])
+    load_model_btn.click(
+        fn=chat_start_execution, inputs=[port], outputs=[output_text, save_port]
+    )
 
 
 def chat_upload_model_button(manager, runner):
@@ -930,7 +1003,9 @@ def chat_upload_model_button(manager, runner):
         return result
 
     if unload_model_btn and output_text:
-        unload_model_btn.click(fn=chat_stop_current_process, inputs=[], outputs=output_text)
+        unload_model_btn.click(
+            fn=chat_stop_current_process, inputs=[], outputs=output_text
+        )
 
 
 def setup_start_button(manager, runner, module):
@@ -958,10 +1033,10 @@ def setup_start_button(manager, runner, module):
             "",
         )
 
-    async def start_execution(stage):
+    async def start_execution(stage_value):
         if module == "train":
-            execute_path = f"train_{stage.lower()}_yaml_path"
-            command_name = f"train_{stage.lower()}"
+            execute_path = f"train_{stage_value.lower()}_yaml_path"
+            command_name = f"train_{stage_value.lower()}"
         else:
             execute_path = module + "_yaml_path"
             command_name = module
@@ -969,10 +1044,16 @@ def setup_start_button(manager, runner, module):
         update_config_yaml(manager, execute_path, module)
         command = config.get_execute_command(command_name)
 
+        gr.Info(alert.get("allow_switch_button", "info"))
         async for output in execute_command(runner, command):
             yield output
 
     async def start_export_merge_execution():
+        if runner.is_running():
+            gr.Warning(alert.get("split_is_running", "warning"))
+            return
+
+        gr.Info(alert.get("allow_switch_button", "info"))
         execute_path = "export_yaml_path"
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("export")
@@ -981,6 +1062,11 @@ def setup_start_button(manager, runner, module):
             yield output
 
     async def start_export_split_execution():
+        if runner.is_running():
+            gr.Warning(alert.get("merge_is_running", "warning"))
+            return
+
+        gr.Info(alert.get("allow_switch_button", "info"))
         execute_path = "export_yaml_path"
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("split")
@@ -1125,23 +1211,23 @@ def get_default_value_for_component(component):
     """
     component_type = type(component).__name__
 
-    if hasattr(component, 'value') and component.value is not None:
+    if hasattr(component, "value") and component.value is not None:
         return component.value
 
-    if component_type in ['Textbox', 'TextArea']:
+    if component_type in ["Textbox", "TextArea"]:
         return ""
-    elif component_type in ['Number', 'Slider']:
+    elif component_type in ["Number", "Slider"]:
         return 0
-    elif component_type == 'Checkbox':
+    elif component_type == "Checkbox":
         return False
-    elif component_type == 'Dropdown':
-        if hasattr(component, 'multiselect') and component.multiselect:
+    elif component_type == "Dropdown":
+        if hasattr(component, "multiselect") and component.multiselect:
             return []
         else:
             return None
-    elif component_type == 'Radio':
+    elif component_type == "Radio":
         return None
-    elif component_type == 'CheckboxGroup':
+    elif component_type == "CheckboxGroup":
         return []
     else:
         return ""
@@ -1171,7 +1257,9 @@ def fix_component_value(component, value):
         elif isinstance(value, (int, float)):
             return value
         else:
-            print(f"Warning: Unexpected type {type(value)} for Number component, using 0")
+            print(
+                f"Warning: Unexpected type {type(value)} for Number component, using 0"
+            )
             return 0
 
     elif component_type == "Dropdown":
@@ -1299,7 +1387,17 @@ def setup_chatbot_response(manager):
     stop_btn = manager.get_elem_by_id("chat", "stop_btn")
     clear_btn = manager.get_elem_by_id("chat", "clear_btn")
 
-    async def on_submit(message, history, role, system_prompt, max_new_tokens, top_p, temperature, port, model_name):
+    async def on_submit(
+        message,
+        history,
+        role,
+        system_prompt,
+        max_new_tokens,
+        top_p,
+        temperature,
+        port,
+        model_name,
+    ):
         update_config_yaml(manager, "chat_yaml_path", "chat")
 
         use_thought_model = chat_generator.check_thought_model(model_name=model_name)
@@ -1421,11 +1519,15 @@ def chat_status_button_handler(manager, runner):
                         gr.Warning(f"{status_message} - Status: {response.status}")
 
         except asyncio.TimeoutError:
-            error_message = alert.get("chat_check_load_model", "error").format(port_value)
+            error_message = alert.get("chat_check_load_model", "error").format(
+                port_value
+            )
             gr.Warning(f"{error_message} - Timeout")
 
         except Exception as e:
-            error_message = alert.get("chat_check_load_model", "error").format(port_value)
+            error_message = alert.get("chat_check_load_model", "error").format(
+                port_value
+            )
             gr.Warning(f"{error_message} - Exception: {e!s}")
 
     button.click(fn=update_status, inputs=[save_port], outputs=[])
@@ -1602,7 +1704,8 @@ async def split_large_safetensors(folder_path, runner, max_shard_size=10.0):
     safetensors_files = [
         f
         for f in os.listdir(folder_path)
-        if f.lower().endswith(".safetensors") and os.path.isfile(os.path.join(folder_path, f))
+        if f.lower().endswith(".safetensors")
+        and os.path.isfile(os.path.join(folder_path, f))
     ]
 
     if not safetensors_files:
@@ -1670,23 +1773,28 @@ def load_update_dataset_config(manager, module, dataset_id, path_id, prob_id, ty
         for dataset_name in dataset_names:
             info = config.get_dataset_info_kwagrs(dataset_name)
             if info is not None:
-
                 path = info.get("path")
                 prob = info.get("prob")
                 type = info.get("type")
 
                 if path is None:
-                    path_error_msg = alert.get("preview_data_non_path", "warning").format(dataset_name)
+                    path_error_msg = alert.get(
+                        "preview_data_non_path", "warning"
+                    ).format(dataset_name)
                     print(path_error_msg)
                     gr.Warning(path_error_msg)
                     continue
                 if prob is None:
-                    prob_error_msg = alert.get("preview_data_non_prob", "warning").format(dataset_name)
+                    prob_error_msg = alert.get(
+                        "preview_data_non_prob", "warning"
+                    ).format(dataset_name)
                     gr.Warning(prob_error_msg)
                     print(prob_error_msg)
                     continue
                 if type is None:
-                    type_error_msg = alert.get("preview_data_non_type", "warning").format(dataset_name)
+                    type_error_msg = alert.get(
+                        "preview_data_non_type", "warning"
+                    ).format(dataset_name)
                     gr.Warning(type_error_msg)
                     print(type_error_msg)
                     continue
@@ -1699,6 +1807,12 @@ def load_update_dataset_config(manager, module, dataset_id, path_id, prob_id, ty
         type_str = ", ".join(types)
         prob_str = ", ".join([str(p) for p in probs])
 
-        return gr.update(value=path_str), gr.update(value=prob_str), gr.update(value=type_str)
+        return (
+            gr.update(value=path_str),
+            gr.update(value=prob_str),
+            gr.update(value=type_str),
+        )
 
-    manager.demo.load(fn=update_path_prob, inputs=dataset, outputs=[path_elem, prob_elem, type_elem])
+    manager.demo.load(
+        fn=update_path_prob, inputs=dataset, outputs=[path_elem, prob_elem, type_elem]
+    )

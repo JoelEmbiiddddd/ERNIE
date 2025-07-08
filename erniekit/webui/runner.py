@@ -26,7 +26,6 @@ from erniekit.webui.alert import alert
 
 
 class CommandRunner:
-
     def __init__(self):
         self.current_process = None
         self.process_lock = asyncio.Lock()
@@ -51,7 +50,9 @@ class CommandRunner:
         self.lines_history = []
         self.progress_line_buffer = {}
         separator = "\n" + "-" * 50 + "\n"
-        start_text = alert.get("progress", "run_command").format(separator, command) + "\n"
+        start_text = (
+            alert.get("progress", "run_command").format(separator, command) + "\n"
+        )
         self.lines_history.extend([start_text])
 
         yield "\n".join(self.lines_history), 0, 0
@@ -92,7 +93,11 @@ class CommandRunner:
                         self._parse_progress(line_clean)
 
                         if should_update:
-                            yield "\n".join(self.lines_history), self.current, self.total
+                            yield (
+                                "\n".join(self.lines_history),
+                                self.current,
+                                self.total,
+                            )
 
         except Exception as e:
             error_msg = alert.get("progress", "execution_error").format(str(e))
@@ -196,7 +201,9 @@ class CommandRunner:
             percent = int(percent_match.group(1))
             return percent == 0 or percent == 100 or percent % 10 == 0
 
-        return "100%" in line or "complete" in line.lower() or "finished" in line.lower()
+        return (
+            "100%" in line or "complete" in line.lower() or "finished" in line.lower()
+        )
 
     def _update_progress_in_history(self, progress_key, line):
         """
@@ -264,7 +271,9 @@ class CommandRunner:
 
             try:
                 if process.returncode is not None:
-                    progress_end_msg = "\n" + alert.get("progress", "progress_end") + "\n"
+                    progress_end_msg = (
+                        "\n" + alert.get("progress", "progress_end") + "\n"
+                    )
                     self.lines_history.append(progress_end_msg)
                     return "\n".join(self.lines_history)
 
@@ -277,13 +286,17 @@ class CommandRunner:
 
                 if process.returncode is None:
                     process.kill()
-                    force_terminated_msg = "\n" + alert.get("progress", "force_terminated") + "\n"
+                    force_terminated_msg = (
+                        "\n" + alert.get("progress", "force_terminated") + "\n"
+                    )
                     print(force_terminated_msg)
                     self.lines_history.append(force_terminated_msg)
                     await process.wait()
 
                 self.was_terminated_by_user = True
-                user_terminated_msg = "\n" + alert.get("progress", "user_terminated") + "\n"
+                user_terminated_msg = (
+                    "\n" + alert.get("progress", "user_terminated") + "\n"
+                )
                 self.lines_history.append(user_terminated_msg)
                 print(user_terminated_msg)
             except Exception as e:
@@ -309,3 +322,16 @@ class CommandRunner:
         self.current_output = ""
         self.progress_line_buffer = {}
         return ""
+
+    def is_running(self) -> bool:
+        """
+        Check if there is an active process being executed.
+
+        Args:
+            self: Instance reference
+
+        Returns:
+            bool: True if there is an active process, False otherwise
+        """
+        process = self.current_process
+        return process is not None and process.returncode is None
