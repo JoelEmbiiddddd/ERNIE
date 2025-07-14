@@ -162,6 +162,12 @@ ALERTS = {
             "en": "Please note that fp8 only supports GPU environments of H-card type",
         }
     },
+    "dataset_none_data": {
+        "warning": {
+            "zh": "数据集{}: 缺失相关数据({})",
+            "en": "Dataset {}: Missing relevant data ({})"
+        }
+    }
 }
 
 

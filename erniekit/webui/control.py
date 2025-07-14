@@ -19,7 +19,6 @@ Event response mechanism handling
 import asyncio
 import json
 import os
-import subprocess
 import time
 
 import aiohttp
@@ -57,26 +56,10 @@ def eval_reaction(manager, runner, module):
         module (str): Module name
 
     """
-    setup_command_buttons(manager, runner, module)
-    eval_specific_elem_change(manager)
-    reflash_existed_dataset_path_prob(
-        manager,
-        section="eval",
-        dataset_id="eval_dataset",
-        path_id="eval_existed_dataset_path",
-        prob_id="eval_existed_dataset_prob",
-        type_id="eval_existed_dataset_type",
-    )
-    dataset_type_select_reflash(manager, "eval", "eval_customize")
 
-    load_update_dataset_config(
-        manager,
-        module="eval",
-        dataset_id="eval_dataset",
-        path_id="eval_existed_dataset_path",
-        prob_id="eval_existed_dataset_prob",
-        type_id="eval_existed_dataset_type",
-    )
+    setup_command_buttons(manager, runner, module)
+    handle_dataset_preview(manager, module, "eval")
+    setup_save_dataset_btn_update(manager, module, "eval")
 
 
 def export_reaction(manager, runner, module):
@@ -121,75 +104,11 @@ def train_reaction(manager, runner, module):
     """
     setup_command_buttons(manager, runner, module)
     setup_update_stage(manager)
-    train_specific_elem_change(manager)
     train_epochs_change(manager)
-    dataset_type_select_reflash(manager, "train", "train_customize")
-    dataset_type_select_reflash(manager, "train", "eval_customize")
-
-    reflash_existed_dataset_path_prob(
-        manager,
-        section="train",
-        dataset_id="train_dataset",
-        path_id="train_existed_dataset_path",
-        prob_id="train_existed_dataset_prob",
-        type_id="train_existed_dataset_type",
-    )
-
-    reflash_existed_dataset_path_prob(
-        manager,
-        section="train",
-        dataset_id="eval_dataset",
-        path_id="eval_existed_dataset_path",
-        prob_id="eval_existed_dataset_prob",
-        type_id="eval_existed_dataset_type",
-    )
-
-    load_update_dataset_config(
-        manager,
-        module="train",
-        dataset_id="train_dataset",
-        path_id="train_existed_dataset_path",
-        prob_id="train_existed_dataset_prob",
-        type_id="train_existed_dataset_type",
-    )
-
-    load_update_dataset_config(
-        manager,
-        module="train",
-        dataset_id="eval_dataset",
-        path_id="eval_existed_dataset_path",
-        prob_id="eval_existed_dataset_prob",
-        type_id="eval_existed_dataset_type",
-    )
-
-
-def dataset_type_select_reflash(manager, module, elem):
-    """
-    Refresh dataset configuration based on selected dataset type.
-
-    Args:
-        manager (object): Configuration manager
-        module (str): Module name
-        elem (str): Element name representing the dataset type
-    """
-
-    dataset_type = manager.get_elem_by_id(module, f"{elem}_dataset_type")
-    select_dataset_type = manager.get_elem_by_id(module, f"{elem}_select_dataset_type")
-
-    def add_selection(current_selection, current_text):
-        if current_selection is not None:
-            if current_text == "":
-                new_text = current_selection
-            else:
-                new_text = current_text + "," + current_selection
-        else:
-            new_text = current_text
-
-        return new_text, None
-
-    select_dataset_type.change(
-        fn=add_selection, inputs=[select_dataset_type, dataset_type], outputs=[dataset_type, select_dataset_type]
-    )
+    handle_dataset_preview(manager, module, "train")
+    setup_save_dataset_btn_update(manager, module, "train")
+    handle_dataset_preview(manager, module, "eval")
+    setup_save_dataset_btn_update(manager, module, "eval")
 
 
 def train_epochs_change(manager):
@@ -214,76 +133,16 @@ def train_epochs_change(manager):
     num_train_epochs.change(fn=on_num_train_epochs_change, inputs=[max_steps], outputs=[])
 
 
-def reflash_existed_dataset_path_prob(manager, section, dataset_id, path_id, prob_id, type_id):
-    """
-    Refresh the probability configuration for existing dataset paths based on type changes.
-
-    Args:
-        manager (manager): Configuration manager for component values
-        section (str): Configuration section containing dataset settings
-        dataset_id (str): ID of the dataset element
-        path_id (str): ID of the path configuration element
-        prob_id (str): ID of the probability configuration element
-        type_id (str): ID of the dataset type configuration element
-    """
-
-    dataset = manager.get_elem_by_id(section, dataset_id)
-    path_elem = manager.get_elem_by_id(section, path_id)
-    prob_elem = manager.get_elem_by_id(section, prob_id)
-    type_elem = manager.get_elem_by_id(section, type_id)
-
-    def update_path_prob(dataset_names):
-        paths = []
-        probs = []
-        types = []
-
-        for dataset_name in dataset_names:
-            info = config.get_dataset_info_kwagrs(dataset_name)
-            if info is not None:
-
-                path = info.get("path")
-                prob = info.get("prob")
-                type = info.get("type")
-
-                if path is None:
-                    path_error_msg = alert.get("preview_data_non_path", "warning").format(dataset_name)
-                    print(path_error_msg)
-                    gr.Warning(path_error_msg)
-                    continue
-                if prob is None:
-                    prob_error_msg = alert.get("preview_data_non_prob", "warning").format(dataset_name)
-                    gr.Warning(prob_error_msg)
-                    print(prob_error_msg)
-                    continue
-                if type is None:
-                    type_error_msg = alert.get("preview_data_non_type", "warning").format(dataset_name)
-                    gr.Warning(type_error_msg)
-                    print(type_error_msg)
-                    continue
-
-                paths.append(path)
-                probs.append(prob)
-                types.append(type)
-
-        path_str = ", ".join(paths)
-        type_str = ", ".join(types)
-        prob_str = ", ".join([str(p) for p in probs])
-
-        return gr.update(value=path_str), gr.update(value=prob_str), gr.update(value=type_str)
-
-    dataset.change(fn=update_path_prob, inputs=[dataset], outputs=[path_elem, prob_elem, type_elem])
-
-
-def react_preview_dataset_button(manager, preview_button, module, elem_id):
+def react_preview_dataset_button(manager, preview_button, module, elem_type):
     """
     Render dataset preview buttons with support for multiple datasets, pagination,
     and dataset switching.
 
     Args:
+        elem_type:
         manager (Manager): Component manager instance
-        preview_button (Button): Gradio Button component for triggering preview
         module (str): Module identifier (e.g., "train", "eval")
-        elem_id (str): Element identifier for the dataset configuration
+        elem_type (str): Element identifier for the dataset configuration
     """
 
     language = manager.get_elem_by_id("basic", "language")
@@ -297,30 +156,26 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
     with gr.Column(visible=False, elem_classes="modal-box") as popup:
         with gr.Row():
             with gr.Column(scale=1):
-                dataset_preview_title = gr.Markdown(value="## 数据集预览")
+                dataset_preview_title = gr.Markdown()
             with gr.Column(scale=1):
-                page_info = gr.Markdown(value="第1页/共1页", elem_classes="page-info")
+                page_info = gr.Markdown(elem_classes="page-info")
             with gr.Row():
-                dataset_info = gr.Markdown("")
+                dataset_info = gr.Markdown()
 
-        json_preview = gr.Code(language="json", label="数据内容", show_label=False)
+        json_preview = gr.Code(language="json", show_label=False)
 
         with gr.Row(elem_classes="pagination-controls"):
-            prev_btn = gr.Button("上一页", size="lg", visible=False)
+            prev_btn = gr.Button(size="lg", visible=False)
             manager.add_elem(module, "prev_btn", prev_btn)
-            next_btn = gr.Button("下一页", size="lg", visible=False)
-            close_button = gr.Button("关闭", size="lg")
+            next_btn = gr.Button(size="lg", visible=False)
+            close_button = gr.Button(size="lg")
 
         with gr.Row(elem_classes="pagination-controls"):
-            prev_dataset_btn = gr.Button("上组数据集", size="lg", visible=False)
-            next_dataset_btn = gr.Button("下组数据集", size="lg", visible=False)
+            prev_dataset_btn = gr.Button(size="lg", visible=False)
+            next_dataset_btn = gr.Button(size="lg", visible=False)
 
     def get_data_paths():
-        user_data_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset_path")
-        default_data_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset")
-
-        if default_data_path_value is not None and default_data_path_value:
-            return [common.DEFAULT_DATASET_PATH]
+        user_data_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_type}_dataset_path")
 
         if user_data_path_value:
             data_paths = []
@@ -451,7 +306,7 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
         return show_popup(language, page_num, dataset_index)
 
     def on_preview_check(language, current_page, current_dataset_index):
-        dataset_path_value = manager.get_component_value(module_id=module, elem_id=f"{elem_id}_dataset_path")
+        dataset_path_value = manager.get_component_value(module_id=module, elem_id=f"{module}_dataset_path")
         if dataset_path_value == "" or dataset_path_value is None:
             gr.Warning(alert.get("preview_data_path_none", "warning"))
             return hide_popup()
@@ -490,6 +345,27 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
             prev_btn_vis,
             next_btn_vis,
             "1",
+        )
+
+    def update_language(language):
+        dataset_preview_title_la = la.get(key="dataset_preview_title", lang=language, prop="value")
+        page_info_la = la.get(key="page_info", lang=language, prop="value")
+        dataset_info_la = la.get(key="dataset_info", lang=language, prop="value")
+        next_btn_la = la.get(key="next_btn", lang=language, prop="value")
+        prev_btn_la = la.get(key="prev_btn", lang=language, prop="value")
+        close_button_la = la.get(key="close_button", lang=language, prop="value")
+        prev_dataset_btn_la = la.get(key="prev_dataset_btn", lang=language, prop="value")
+        next_dataset_btn_la = la.get(key="next_dataset_btn", lang=language, prop="value")
+
+        return (
+            dataset_preview_title_la,
+            page_info_la,
+            dataset_info_la,
+            next_btn_la,
+            prev_btn_la,
+            close_button_la,
+            prev_dataset_btn_la,
+            next_dataset_btn_la,
         )
 
     preview_button.click(
@@ -625,28 +501,22 @@ def react_preview_dataset_button(manager, preview_button, module, elem_id):
         ],
     )
 
-    def update_language(language):
-        dataset_preview_title_la = la.get(key="dataset_preview_title", lang=language, prop="value")
-        page_info_la = la.get(key="page_info", lang=language, prop="value")
-        dataset_info_la = la.get(key="dataset_info", lang=language, prop="value")
-        next_btn_la = la.get(key="next_btn", lang=language, prop="value")
-        prev_btn_la = la.get(key="prev_btn", lang=language, prop="value")
-        close_button_la = la.get(key="close_button", lang=language, prop="value")
-        prev_dataset_btn_la = la.get(key="prev_dataset_btn", lang=language, prop="value")
-        next_dataset_btn_la = la.get(key="next_dataset_btn", lang=language, prop="value")
-
-        return (
-            dataset_preview_title_la,
-            page_info_la,
-            dataset_info_la,
-            next_btn_la,
-            prev_btn_la,
-            close_button_la,
-            prev_dataset_btn_la,
-            next_dataset_btn_la,
-        )
-
     language.change(
+        fn=update_language,
+        inputs=[language],
+        outputs=[
+            dataset_preview_title,
+            page_info,
+            dataset_info,
+            next_btn,
+            prev_btn,
+            close_button,
+            prev_dataset_btn,
+            next_dataset_btn,
+        ],
+    )
+
+    manager.demo.load(
         fn=update_language,
         inputs=[language],
         outputs=[
@@ -678,72 +548,6 @@ def setup_command_buttons(manager, runner, module):
     setup_start_button(manager, runner, module)
     setup_stop_button(manager, runner, module)
     setup_clean_button(manager, runner, module)
-
-
-def train_specific_elem_change(manager):
-    """
-    Evaluate changes to a specific UI element and trigger dependent updates.
-
-    Args:
-        manager (manager): Manager instance responsible for component state
-    """
-    language = manager.get_elem_by_id("basic", "language")
-    train_dataset = manager.get_specific_elem_by_id("train", "train_dataset")
-    eval_dataset = manager.get_specific_elem_by_id("train", "eval_dataset")
-
-    def update_specific_elem_dropdown(language):
-        train_dataset_label = la.get(key="train_dataset", lang=language, prop="label")
-        eval_dataset_label = la.get(key="eval_dataset", lang=language, prop="label")
-
-        train_dataset_info = la.get(key="train_dataset", lang=language, prop="info")
-        eval_dataset_info = la.get(key="eval_dataset", lang=language, prop="info")
-
-        return (
-            gr.update(label=train_dataset_label, info=train_dataset_info),
-            gr.update(label=eval_dataset_label, info=eval_dataset_info),
-        )
-
-    def update_train_dataset_data(inputs):
-        manager.set_specific_component_value("train", "train_dataset", inputs)
-        return gr.update(value=inputs)
-
-    def update_eval_dataset_data(inputs):
-        manager.set_specific_component_value("train", "eval_dataset", inputs)
-        return gr.update(value=inputs)
-
-    train_dataset.change(fn=update_train_dataset_data, inputs=[train_dataset], outputs=[train_dataset])
-
-    eval_dataset.change(fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset])
-
-    language.change(
-        fn=update_specific_elem_dropdown,
-        inputs=[language],
-        outputs=[train_dataset, eval_dataset],
-    )
-
-
-def eval_specific_elem_change(manager):
-    """
-    Evaluates specific element changes.
-
-    Args:
-        manager (manager): Manages component states and updates.
-    """
-    language = manager.get_elem_by_id("basic", "language")
-    eval_dataset = manager.get_specific_elem_by_id("eval", "eval_dataset")
-
-    def update_specific_elem_dropdown(language):
-        eval_dataset_label = la.get(key="eval_dataset", lang=language, prop="label")
-        eval_dataset_info = la.get(key="eval_dataset", lang=language, prop="info")
-        return gr.update(label=eval_dataset_label, info=eval_dataset_info)
-
-    def update_eval_dataset_data(inputs):
-        manager.set_specific_component_value("eval", "eval_dataset", inputs)
-        return gr.update(value=inputs)
-
-    eval_dataset.change(fn=update_eval_dataset_data, inputs=[eval_dataset], outputs=[eval_dataset])
-
-    language.change(fn=update_specific_elem_dropdown, inputs=[language], outputs=[eval_dataset])
 
 
 def setup_model_name_or_path_update(manager):
@@ -1027,6 +831,50 @@ def setup_stop_button(manager, runner, module):
 
     if stop_btn and output_text:
         stop_btn.click(fn=stop_current_process, inputs=[], outputs=output_text)
+
+
+def handle_dataset_preview(manager, module, elem_type):
+
+    dataset_path = manager.get_elem_by_id(module, f"{elem_type}_dataset_path")
+
+    def init_dataset_path():
+        user_config = config.get_default_user_dict(module, f"{elem_type}_dataset")
+        dataset_info = config.get_dataset_info()
+
+        path = []
+        for key in user_config:
+            if key in dataset_info:
+                path.append(dataset_info[key].get('path', ''))
+
+        path_str = ", ".join(path)
+        return gr.update(value=path_str)
+
+    manager.demo.load(
+        fn=init_dataset_path,
+        outputs=[dataset_path],
+    )
+
+
+def setup_save_dataset_btn_update(manager, module, elem_type):
+    dataset_save_btn = manager.get_elem_by_id(module, f"{elem_type}_dataset_save_btn")
+    dataset_group = manager.get_elem_by_id(module, f"{elem_type}_dataset_group")
+
+    dataset_path = manager.get_elem_by_id(module, f"{elem_type}_dataset_path")
+    dataset_prob = manager.get_elem_by_id(module, f"{elem_type}_dataset_prob")
+    dataset_type = manager.get_elem_by_id(module, f"{elem_type}_dataset_type")
+
+    def update_path_by_group(dataset_group_value):
+        return (
+            common.extract_dataset_and_join(dataset_group_value, "col2"),
+            common.extract_dataset_and_join(dataset_group_value, "col3"),
+            common.extract_dataset_and_join(dataset_group_value, "col1"),
+        )
+
+    dataset_save_btn.click(
+        fn=update_path_by_group,
+        inputs=[dataset_group],
+        outputs=[dataset_path, dataset_prob, dataset_type]
+    )
 
 
 def setup_clean_button(manager, runner, module):
@@ -1509,7 +1357,7 @@ def update_config_yaml(manager, execute_path, module, is_preview=False):
             "output_text",
             "output_container",
             "clean_btn",
-            "train_preview_btn",
+            "train_dataset_preview_btn",
             "start_merge_btn",
             "start_split_btn",
             "chat_input",
@@ -1522,7 +1370,7 @@ def update_config_yaml(manager, execute_path, module, is_preview=False):
             "unload_model_btn",
             "role_setting",
             "system_prompt",
-            "eval_preview_btn",
+            "eval_dataset_preview_btn",
             "model_output_tab",
             "train_tab",
             "chat_tab",
@@ -1537,168 +1385,432 @@ def update_config_yaml(manager, execute_path, module, is_preview=False):
             "distributed_parameters_tab",
             "optimizer_parameters_tab",
             "other_parameters_tab",
-            "train_existed_dataset_path",
-            "train_existed_dataset_prob",
-            "train_customize_dataset_path",
-            "train_customize_dataset_prob",
-            "eval_existed_dataset_path",
-            "eval_existed_dataset_prob",
-            "eval_customize_dataset_path",
-            "eval_customize_dataset_prob",
-            "train_dataset_setting_tab",
-            "eval_dataset_setting_tab",
-            "eval_customize_preview_btn",
-            "eval_existed_preview_btn",
-            "train_customize_preview_btn",
-            "train_existed_preview_btn",
             "stop_btn",
-            "train_customize_select_dataset_type",
-            "eval_customize_select_dataset_type",
             "output_dir_view",
             "prev_btn",
-            "train_customize_dataset_type",
-            "train_existed_dataset_type",
-            "eval_customize_dataset_type",
-            "eval_existed_dataset_type",
-            "builtin_dataset_tab",
-            "customize_dataset_tab",
-            "eval_builtin_dataset_tab",
-            "eval_customize_dataset_tab",
-            "train_builtin_dataset_tab",
-            "train_customize_dataset_tab",
+            "train_dataset_group",
+            "eval_dataset_group",
+            "eval_dataset",
             "model_source",
             "chat_info",
             "eval_dataset",
             "train_dataset",
             "model_name",
+            "eval_dataset_save_btn",
+            "train_dataset_save_btn",
+            "eval_dataset_btn",
+            "train_dataset_btn",
+            "eval_dataset_preview_btn",
+            "train_dataset_preview_btn",
         ],
         is_preview,
     )
 
 
-async def split_large_safetensors(folder_path, runner, max_shard_size=10.0):
+def create_dynamic_form_component(
+        manager,
+        demo: gr.Blocks,
+        default_dataset,
+        max_rows: int = 20
+):
+
     """
-    Check .safetensors files in the specified folder and split any files
-    exceeding max_shard_size (GB) using the erniekit split command.
-
-    Args:
-        folder_path (str): Path to the folder to check
-        runner (object): Execution handler for splitting operations
-        max_shard_size (float): Maximum file size threshold in GB (default: 10GB)
-
-    Returns:
-        dict: Processing results in the format {filename: processing status}
-    """
-    max_size_bytes = max_shard_size * 1024**3
-    results = {}
-
-    if not os.path.exists(folder_path):
-        error_msg_non_existent = alert.get("export_split_non_existent", "error")
-        print("❌ " + error_msg_non_existent)
-        gr.Warning(error_msg_non_existent)
-        yield "❌ " + error_msg_non_existent
-        return
-
-    safetensors_files = [
-        f
-        for f in os.listdir(folder_path)
-        if f.lower().endswith(".safetensors") and os.path.isfile(os.path.join(folder_path, f))
-    ]
-
-    if not safetensors_files:
-        export_split_success = alert.get("export_split_success", "info")
-        print("✅ " + export_split_success)
-        yield results
-        return
-
-    for filename in safetensors_files:
-        file_path = os.path.join(folder_path, filename)
-        file_size = os.path.getsize(file_path)
-
-        if file_size > max_size_bytes:
-            file_size_gb = file_size / (1024**3)
-
-            split_text = alert.get("export_split_find_exceed_file", "info").format(
-                filename, file_size_gb, max_shard_size
-            )
-            print(split_text)
-            yield split_text
-
-            try:
-                command = config.get_execute_command("split")
-                async for output in execute_command(runner, command):
-                    yield output
-
-                export_split_success = alert.get("export_split_success", "info")
-                print("✅ " + export_split_success)
-                gr.Info(export_split_success)
-                yield "✅ " + export_split_success
-            except subprocess.CalledProcessError as e:
-                export_split_fail = alert.get("export_split_fail", "error")
-                print("❌ " + export_split_fail)
-                gr.Warning(export_split_fail)
-                yield "❌ " + export_split_fail
-                yield e.output
-
-
-def load_update_dataset_config(manager, module, dataset_id, path_id, prob_id, type_id):
-    """
-    Load and update dataset configuration with specified parameters.
+    Build Dataset Button
 
     Args:
         manager (object): Configuration manager
-        module (str): Target module identifier
-        dataset_id (str): Unique identifier for the dataset
-        path_id (str): Identifier for dataset path configuration
-        prob_id (str): Identifier for probability distribution configuration
-        type_id (str): Identifier for dataset type configuration
-
-    Returns:
-        dict: Updated dataset configuration
+        demo: Demo built via webui
+        default_dataset: Default dataset
+        max_rows: Number of rows to initialize with
     """
 
-    dataset = manager.get_elem_by_id(module, dataset_id)
-    path_elem = manager.get_elem_by_id(module, path_id)
-    prob_elem = manager.get_elem_by_id(module, prob_id)
-    type_elem = manager.get_elem_by_id(module, type_id)
+    columns = config.get_init_dataset_elem()
+    language = manager.get_elem_by_id("basic", "language")
 
-    def update_path_prob(dataset_names):
-        paths = []
-        probs = []
-        types = []
+    def get_default_value(col_config):
+        if col_config["type"] == "dropdown":
+            return col_config["options"][0] if col_config["options"] else None
+        elif col_config["type"] == "textbox":
+            return ""
+        return ""
 
-        for dataset_name in dataset_names:
-            info = config.get_dataset_info_kwagrs(dataset_name)
-            if info is not None:
+    def get_next_available_row(form_data):
+        if not form_data:
+            return 0
+        int_keys = [int(k) for k in form_data.keys()]
+        return max(int_keys) + 1
 
-                path = info.get("path")
-                prob = info.get("prob")
-                type = info.get("type")
+    def get_display_to_actual_mapping(form_data):
+        if not form_data:
+            return {}
+        sorted_rows = sorted([int(k) for k in form_data.keys()])
+        return {i: sorted_rows[i] for i in range(len(sorted_rows))}
 
-                if path is None:
-                    path_error_msg = alert.get("preview_data_non_path", "warning").format(dataset_name)
-                    print(path_error_msg)
-                    gr.Warning(path_error_msg)
+    def format_form_data_for_display(form_data):
+        if not form_data:
+            return ""
+
+        import json
+        try:
+            return json.dumps(form_data, indent=2, ensure_ascii=False)
+        except:
+            return str(form_data)
+
+    def initialize_default_datasets():
+        form_data = {}
+        dataset_info = config.get_dataset_info()
+
+        if default_dataset and isinstance(default_dataset, list):
+            for i, dataset_name in enumerate(default_dataset):
+                if dataset_name in dataset_info:
+                    dataset_config = dataset_info[dataset_name]
+                    new_row = {
+                        "col0": dataset_name,
+                        "col1": dataset_config["type"],
+                        "col2": dataset_config["path"],
+                        "col3": dataset_config["prob"]
+                    }
+                    form_data[str(i)] = new_row
+                else:
+                    print(f"Warning: Dataset '{dataset_name}' not found in config, skipping...")
                     continue
-                if prob is None:
-                    prob_error_msg = alert.get("preview_data_non_prob", "warning").format(dataset_name)
-                    gr.Warning(prob_error_msg)
-                    print(prob_error_msg)
+
+        return form_data
+
+    def initialize_form_rows():
+        initial_form_data = initialize_default_datasets()
+
+        visibility_states = []
+        num_rows = len(initial_form_data) if initial_form_data else 0
+
+        for i in range(max_rows):
+            visibility_states.append(i < num_rows)
+
+        all_component_updates = get_all_component_updates(initial_form_data)
+
+        return [initial_form_data,
+                format_form_data_for_display(initial_form_data)] + visibility_states + all_component_updates
+
+    def update_data(form_data, actual_row_idx, col_name, value):
+        if form_data is None:
+            form_data = {}
+
+        row_key = str(actual_row_idx)
+
+        if row_key not in form_data:
+            new_row = {}
+            for i, col_config in enumerate(columns):
+                new_row[f"col{i}"] = get_default_value(col_config)
+            form_data[row_key] = new_row
+
+        form_data[row_key][col_name] = value
+
+        if col_name == "col0" and value != "Customization":
+            dataset_info = config.get_dataset_info().get(value)
+            if dataset_info is not None:
+                form_data[row_key]["col1"] = dataset_info["type"]
+                form_data[row_key]["col2"] = dataset_info["path"]
+                form_data[row_key]["col3"] = dataset_info["prob"]
+
+        return form_data
+
+    def get_ui_updates_for_row(col_name, value):
+        if col_name == "col0" and value != "Customization":
+            dataset_info = config.get_dataset_info().get(value)
+            if dataset_info is not None:
+                ui_updates = [
+                    gr.update(value=dataset_info["type"]),
+                    gr.update(value=dataset_info["path"]),
+                    gr.update(value=dataset_info["prob"])
+                ]
+            else:
+                ui_updates = [gr.update(), gr.update(), gr.update()]
+        else:
+            ui_updates = [gr.update(), gr.update(), gr.update()]
+
+        return ui_updates
+
+    def get_all_component_updates(form_data):
+        all_updates = []
+        sorted_rows = sorted([int(k) for k in form_data.keys()]) if form_data else []
+
+        for i in range(max_rows):
+            row_updates = []
+            for j, col_config in enumerate(columns):
+                if i < len(sorted_rows):
+                    actual_row_idx = sorted_rows[i]
+                    row_key = str(actual_row_idx)
+                    value = form_data[row_key][f"col{j}"]
+                    row_updates.append(gr.update(value=value))
+                else:
+                    default_value = get_default_value(col_config)
+                    row_updates.append(gr.update(value=default_value))
+            all_updates.extend(row_updates)
+
+        return all_updates
+
+    def add_row(form_data, *visibility_checks):
+        if form_data is None:
+            form_data = {}
+
+        if len(form_data) < max_rows:
+            next_row_idx = get_next_available_row(form_data)
+            row_key = str(next_row_idx)
+
+            default_dataset_info = config.get_dataset_info()[config.get_default_dataset_name()]
+            new_row = {}
+            if default_dataset_info:
+                new_row["col0"] = config.get_default_dataset_name()
+                new_row["col1"] = default_dataset_info["type"]
+                new_row["col2"] = default_dataset_info["path"]
+                new_row["col3"] = default_dataset_info["prob"]
+            else:
+                for i, col_config in enumerate(columns):
+                    new_row[f"col{i}"] = get_default_value(col_config)
+
+            form_data[row_key] = new_row
+
+            new_vis = list(visibility_checks)
+            for i in range(len(new_vis)):
+                if not new_vis[i]:
+                    new_vis[i] = True
+                    break
+
+            all_component_updates = get_all_component_updates(form_data)
+
+            return [form_data] + new_vis + all_component_updates
+
+        all_component_updates = get_all_component_updates(form_data)
+        return [form_data] + list(visibility_checks) + all_component_updates
+
+    def delete_row_and_reset(form_data, actual_row_idx, *visibility_checks):
+        if form_data is None:
+            form_data = {}
+
+        row_key = str(actual_row_idx)
+        if row_key in form_data:
+            del form_data[row_key]
+
+        new_vis = list(visibility_checks)
+        sorted_rows = sorted([int(k) for k in form_data.keys()]) if form_data else []
+
+        for i in range(len(new_vis)):
+            new_vis[i] = i < len(sorted_rows)
+
+        all_row_updates = get_all_component_updates(form_data)
+
+        return [form_data] + new_vis + all_row_updates
+
+    def show_popup():
+        return gr.Column(visible=True), gr.Column(visible=True)
+
+    def save_and_hide(form_data):
+        if form_data is not None and form_data:
+            for row_key, row_data in form_data.items():
+                dataset_name = row_data.get("col0", "")
+                if dataset_name == "":
                     continue
-                if type is None:
-                    type_error_msg = alert.get("preview_data_non_type", "warning").format(dataset_name)
-                    gr.Warning(type_error_msg)
-                    print(type_error_msg)
-                    continue
+                missing_fields = []
 
-                paths.append(path)
-                probs.append(prob)
-                types.append(type)
+                if not row_data.get("col1"):
+                    missing_fields.append("type")
+                if not row_data.get("col2"):
+                    missing_fields.append("path")
+                if not row_data.get("col3"):
+                    missing_fields.append("prob")
 
-        path_str = ", ".join(paths)
-        type_str = ", ".join(types)
-        prob_str = ", ".join([str(p) for p in probs])
+                if missing_fields:
+                    missing_str = "、".join(missing_fields)
+                    warnings_str = alert.get("dataset_none_data", "warning").format(dataset_name, missing_str)
+                    gr.Warning(warnings_str)
 
-        return gr.update(value=path_str), gr.update(value=prob_str), gr.update(value=type_str)
+        return gr.Column(visible=False), gr.Column(visible=False)
 
-    manager.demo.load(fn=update_path_prob, inputs=dataset, outputs=[path_elem, prob_elem, type_elem])
+    def add_row_with_output(form_data, *visibility_checks):
+        result = add_row(form_data, *visibility_checks)
+        return [result[0], format_form_data_for_display(result[0])] + result[1:]
+
+    def get_outputs():
+        row_outputs = []
+        for row in row_components:
+            row_outputs.extend(row)
+
+        return [
+            add_dataset_btn,
+            save_dataset_btn,
+            *delete_buttons,
+            *row_outputs
+        ]
+
+    def update_language(language):
+        add_dataset_btn_la = la.get(key="add_dataset_btn", lang=language, prop="value")
+        save_dataset_btn_la = la.get(key="save_dataset_btn", lang=language, prop="value")
+        delete_btn_la = la.get(key="delete_dataset_btn", lang=language, prop="value")
+
+        delete_btn_updates = [gr.update(value=delete_btn_la) for _ in delete_buttons]
+        row_updates = []
+
+        for _ in row_components:
+            row_update = [
+                gr.update(label=la.get(key="dataset", lang=language, prop="label")),
+                gr.update(label=la.get(key="dataset_type", lang=language, prop="label")),
+                gr.update(label=la.get(key="dataset_path", lang=language, prop="label")),
+                gr.update(label=la.get(key="dataset_prob", lang=language, prop="label")),
+            ]
+            row_updates.extend(row_update)
+
+        return (
+            gr.update(value=add_dataset_btn_la),
+            gr.update(value=save_dataset_btn_la),
+            *delete_btn_updates,
+            *row_updates
+        )
+
+    form_data = gr.State(value={})
+    dataset_btn = gr.Button(variant="primary", size="lg")
+    output_textbox = gr.Textbox(visible=False)
+    overlay = gr.Column(visible=False, elem_classes="modal-overlay-1")
+
+    with gr.Column(visible=False, elem_classes="modal-box-1") as popup:
+
+        with gr.Row():
+            add_dataset_btn = gr.Button(variant="primary")
+            save_dataset_btn = gr.Button(variant="secondary")
+
+        visibility_checks = []
+        delete_buttons = []
+        row_components = []
+
+        for i in range(max_rows):
+            vis_check = gr.Checkbox(value=False, visible=False)
+            visibility_checks.append(vis_check)
+
+            with gr.Row(visible=False, elem_classes="form-row-1") as row:
+                row_cols = []
+                for j, col_config in enumerate(columns):
+                    if col_config["type"] == "dropdown":
+                        col = gr.Dropdown(
+                            choices=col_config["options"],
+                            scale=col_config.get("scale", 1),
+                            value=col_config["options"][0] if col_config["options"] else None
+                        )
+                    elif col_config["type"] == "textbox":
+                        col = gr.Textbox(
+                            scale=col_config.get("scale", 1),
+                            value=""
+                        )
+                    row_cols.append(col)
+
+                delete_btn = gr.Button(scale=1, size="sm", variant="stop")
+                delete_buttons.append(delete_btn)
+                row_components.append(row_cols)
+
+            vis_check.change(
+                fn=lambda val: gr.update(visible=val),
+                inputs=[vis_check],
+                outputs=[row]
+            )
+
+    for i, row_cols in enumerate(row_components):
+        for j, col in enumerate(row_cols):
+            def create_update_handler(display_idx, col_idx):
+                def update_handler(data, val):
+                    if not data:
+                        return [data, format_form_data_for_display(data)] + [gr.update() for _ in range(3)]
+
+                    mapping = get_display_to_actual_mapping(data)
+
+                    if display_idx not in mapping:
+                        return [data, format_form_data_for_display(data)] + [gr.update() for _ in range(3)]
+
+                    actual_row_idx = mapping[display_idx]
+
+                    updated_data = update_data(data, actual_row_idx, f"col{col_idx}", val)
+
+                    if col_idx == 0:
+                        ui_updates = get_ui_updates_for_row(f"col{col_idx}", val)
+                        return [updated_data, format_form_data_for_display(updated_data)] + ui_updates
+                    else:
+                        return [updated_data, format_form_data_for_display(updated_data)] + [gr.update() for _ in range(3)]
+
+                return update_handler
+
+            col.change(
+                fn=create_update_handler(i, j),
+                inputs=[form_data, col],
+                outputs=[form_data, output_textbox, row_cols[1], row_cols[2], row_cols[3]]
+            )
+
+    for i, delete_btn in enumerate(delete_buttons):
+        all_row_components = []
+        for row_cols in row_components:
+            all_row_components.extend(row_cols)
+
+        def create_delete_handler(display_idx):
+            def delete_handler(data, *vis):
+                if not data:
+                    return [data, format_form_data_for_display(data)] + list(vis) + [gr.update() for _ in
+                                                                                     range(max_rows * len(columns))]
+
+                mapping = get_display_to_actual_mapping(data)
+
+                if display_idx not in mapping:
+                    return [data, format_form_data_for_display(data)] + list(vis) + [gr.update() for _ in
+                                                                                     range(max_rows * len(columns))]
+
+                actual_row_idx = mapping[display_idx]
+                result = delete_row_and_reset(data, actual_row_idx, *vis)
+                return [result[0], format_form_data_for_display(result[0])] + result[1:]
+
+            return delete_handler
+
+        delete_btn.click(
+            fn=create_delete_handler(i),
+            inputs=[form_data] + visibility_checks,
+            outputs=[form_data, output_textbox] + visibility_checks + all_row_components
+        )
+
+    all_row_components = []
+    for row_cols in row_components:
+        all_row_components.extend(row_cols)
+
+    add_dataset_btn.click(
+        fn=add_row_with_output,
+        inputs=[form_data] + visibility_checks,
+        outputs=[form_data, output_textbox] + visibility_checks + all_row_components
+    )
+
+    dataset_btn.click(
+        show_popup,
+        outputs=[overlay, popup]
+    )
+
+    save_dataset_btn.click(
+        save_and_hide,
+        inputs=[form_data],
+        outputs=[overlay, popup]
+    )
+
+    demo.load(
+        fn=initialize_form_rows,
+        inputs=[],
+        outputs=[form_data, output_textbox] + visibility_checks + all_row_components
+    )
+
+    language.change(
+        fn=update_language,
+        inputs=[language],
+        outputs=get_outputs()
+    )
+
+    demo.load(
+        fn=update_language,
+        inputs=[language],
+        outputs=get_outputs()
+    )
+
+    return {
+        "output": output_textbox,
+        "save_dataset_btn": save_dataset_btn,
+        "dataset_btn": dataset_btn
+    }

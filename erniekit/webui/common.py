@@ -89,6 +89,24 @@ class ConfigManager:
             "strategy": ["epoch", "steps"],
         }
 
+        self._init_dataset_elem = [
+            {"type": "dropdown", "options": list(self._dataset_info.keys()) + ["Customization"], "scale": 3},
+            {"type": "dropdown", "options": ["alpaca", "file", "erniekit"], "scale": 2},
+            {"type": "textbox", "scale": 7},
+            {"type": "textbox", "scale": 2}
+         ]
+
+        self._default_dataset_name = "demo_sft_train"
+
+    def get_init_dataset_elem(self):
+        return self._init_dataset_elem
+
+    def get_default_dataset_name(self):
+        return self._default_dataset_name
+
+    def get_dataset_info(self):
+        return self._dataset_info
+
     def get_compute_type_by_fine_tuning(self, fine_tuning):
         """
         Determine compute type based on fine-tuning configuration
@@ -682,24 +700,11 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         dict: New configuration dictionary with replaced values
     """
 
-    def merge_values(base, addition, separator=','):
-        if base is None:
-            return addition
-        if addition is None:
-            return base
-
-        base_str = str(base)
-        addition_str = str(addition)
-
-        if not base_str:
-            return addition_str
-        if not addition_str:
-            return base_str
-
-        return f"{base_str}{separator}{addition_str}"
-
     basic_config = config_dict.get("basic", {})
     train_config = config_dict.get("train", {})
+    eval_config = config_dict.get("eval", {})
+    export_config = config_dict.get("export", {})
+    chat_config = config_dict.get("chat", {})
 
     if train_config != {}:
 
@@ -708,33 +713,10 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         else:
             basic_config["output_dir"] = mkdir_output_dir(manager, is_preview)
 
-        train_config["train_dataset_path"] = merge_values(
-            train_config["train_customize_dataset_path"], train_config["train_existed_dataset_path"]
-        )
-
-        train_config["train_dataset_prob"] = merge_values(
-            train_config["train_customize_dataset_prob"], train_config["train_existed_dataset_prob"]
-        )
-
-        train_config["train_dataset_type"] = merge_values(
-            train_config["train_customize_dataset_type"], train_config["train_existed_dataset_type"]
-        )
-
-        train_config["eval_dataset_path"] = merge_values(
-            train_config["eval_customize_dataset_path"], train_config["eval_existed_dataset_path"]
-        )
-
-        train_config["eval_dataset_prob"] = merge_values(
-            train_config["eval_customize_dataset_prob"], train_config["eval_existed_dataset_prob"]
-        )
-
-        train_config["eval_dataset_type"] = merge_values(
-            train_config["eval_customize_dataset_type"], train_config["eval_existed_dataset_type"]
-        )
-
         train_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
+        update_dataset_info(train_config, "train")
+        update_dataset_info(train_config, "eval")
 
-    eval_config = config_dict.get("eval", {})
     if eval_config != {}:
 
         if basic_config["output_dir_view"]:
@@ -742,21 +724,9 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         else:
             basic_config["output_dir"] = config.get_path_config("output_dir")
 
-        eval_config["eval_dataset_path"] = merge_values(
-            eval_config["eval_customize_dataset_path"], eval_config["eval_existed_dataset_path"]
-        )
-
-        eval_config["eval_dataset_prob"] = merge_values(
-            eval_config["eval_customize_dataset_prob"], eval_config["eval_existed_dataset_prob"]
-        )
-
-        eval_config["eval_dataset_type"] = merge_values(
-            eval_config["eval_customize_dataset_type"], eval_config["eval_existed_dataset_type"]
-        )
-
         eval_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
 
-    export_config = config_dict.get("export", {})
+        update_dataset_info(eval_config, "eval")
 
     if export_config != {}:
 
@@ -767,7 +737,6 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
 
         export_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
 
-    chat_config = config_dict.get("chat", {})
     if chat_config != {}:
 
         if basic_config["output_dir_view"]:
@@ -813,6 +782,39 @@ def mkdir_output_dir(manager, is_preview):
         full_path.mkdir(parents=True, exist_ok=True)
 
     return os.path.join(base_output_dir, dir_name)
+
+
+def extract_dataset_and_join(json_str, col_key):
+    """
+    Extract values from a JSON string based on a specified column key and join them into a single string.
+
+    Args:
+        json_str (str): A JSON string containing dataset information
+        col_key (str): The key of the column to extract from each dataset item
+
+    Returns:
+        str: A comma-separated string of values extracted from the specified column. Returns empty string on failure.
+    """
+    try:
+        json_data = json.loads(json_str)
+        column_values = [str(item.get(col_key, '')) for item in json_data.values()]
+        return ','.join(column_values)
+    except:
+        return ""
+
+
+def update_dataset_info(module_config, train_eval_type):
+    """
+    Update dataset configuration in module_config by extracting and joining dataset metadata.
+
+    Args:
+        module_config (dict): Configuration dictionary for the module
+        train_eval_type (str): Type of dataset operation (e.g., "train" or "eval")
+    """
+    dataset_group = module_config[train_eval_type + "_dataset_group"]
+    module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(dataset_group, "col1")
+    module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(dataset_group, "col2")
+    module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(dataset_group, "col3")
 
 
 def export_paddle_log(output_dir):

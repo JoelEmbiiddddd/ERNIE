@@ -249,6 +249,7 @@ class Manager:
                 (
                     gr.Textbox,
                     gr.Dropdown,
+                    gr.State,
                     gr.Slider,
                     gr.Checkbox,
                     gr.CheckboxGroup,
@@ -404,7 +405,7 @@ class Manager:
 
             if isinstance(
                 elem,
-                (gr.Textbox, gr.Dropdown, gr.Slider, gr.Checkbox, gr.CheckboxGroup, gr.Radio, gr.Number, gr.HTML),
+                (gr.Textbox, gr.Dropdown, gr.Slider, gr.Checkbox, gr.CheckboxGroup, gr.Radio, gr.Number, gr.HTML, gr.State),
             ):
                 elem.change(
                     fn=lambda value, mid=module_id, eid=elem_id: self._update_component_value(mid, eid, value),
@@ -430,6 +431,9 @@ class Manager:
                         elem.value = initial_value
                     elif isinstance(elem, gr.HTML):
                         elem.value = initial_value
+                    elif isinstance(elem, gr.State):
+                        elem.value = initial_value
+
 
     def _update_component_value(self, module_id, elem_id, value):
         """

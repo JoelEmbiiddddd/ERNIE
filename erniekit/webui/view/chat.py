@@ -118,7 +118,6 @@ def build(manager):
             with gr.Row():
                 role_setting = gr.Textbox(
                     lines=2,
-                    placeholder="hello",
                 )
 
                 system_prompt = gr.Textbox(lines=2)

@@ -162,6 +162,57 @@ CSS = """
     z-index: 999; /* 遮罩层在模态框下方 */
 }
 
+
+.modal-box-1 {
+    position: fixed!important;
+    top: 50%!important;
+    left: 50%!important;
+    margin-top: -42.5vh!important;
+    margin-left: -45vw!important;
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    width: 90vw!important;
+    max-width: 1400px!important;
+    height: 85vh!important;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-overlay-1 {
+    position: fixed!important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.form-row-1 {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.close-btn-1 {
+    background: #dc3545 !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 20px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    font-size: 16px !important;
+}
+
+.close-btn-1:hover {
+    background: #c82333 !important;
+}
+
 """
 
 html_log = """

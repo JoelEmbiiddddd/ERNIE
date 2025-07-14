@@ -60,28 +60,29 @@ def build(manager):
     default_basic_rslora = str(config.get_default_user_dict("basic", "rslora"))
 
     with gr.Row(elem_classes="basic-info-row"):
-        with gr.Row(scale=1):
             language = gr.Dropdown(
                 choices=config.get_choices_kwargs("language"),
                 value=default_basic_language,
+                scale=1
             )
 
-        with gr.Row(scale=2):
             model_name = gr.Dropdown(
                 choices=config.get_choices_kwargs("model_name"),
                 value=default_basic_model_name,
                 interactive=False,
+                scale=2
             )
-        with gr.Row(scale=1):
+
             model_source = gr.Dropdown(
                 choices=config.get_choices_kwargs("model_source_ernie"),
                 value=default_basic_model_source,
                 interactive=False,
+                scale=1
             )
 
-        with gr.Row(scale=3):
             model_name_or_path = gr.Textbox(
                 value=default_basic_model_name_or_path,
+                scale=3
             )
 
     with gr.Row(elem_classes="basic-info-row"):
