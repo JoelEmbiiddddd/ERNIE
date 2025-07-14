@@ -1511,6 +1511,9 @@ def create_dynamic_form_component(
                 form_data[row_key]["col1"] = dataset_info["type"]
                 form_data[row_key]["col2"] = dataset_info["path"]
                 form_data[row_key]["col3"] = dataset_info["prob"]
+        elif col_name == "col0" and value == "Customization":
+            form_data[row_key]["col2"] = ""
+
 
         return form_data
 
@@ -1525,6 +1528,13 @@ def create_dynamic_form_component(
                 ]
             else:
                 ui_updates = [gr.update(), gr.update(), gr.update()]
+        elif col_name == "col0" and value == "Customization":
+            ui_updates = [
+                gr.update(),
+                gr.update(value=""),
+                gr.update(),
+            ]
+
         else:
             ui_updates = [gr.update(), gr.update(), gr.update()]
 

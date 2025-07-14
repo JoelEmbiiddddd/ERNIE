@@ -723,10 +723,10 @@ LOCALES = {
     },
     "save_dataset_btn": {
         "zh": {
-            "value": "保存数据集",
+            "value": "保存数据集并退出",
         },
         "en": {
-            "value": "Save Dataset",
+            "value": "Save Dataset And Exit",
         }
     },
     "delete_dataset_btn": {
