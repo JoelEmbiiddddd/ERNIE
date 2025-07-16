@@ -217,11 +217,11 @@ class ConfigManager:
             str: Formatted command string
         """
         execute_command = {
-            "export": "ping www.baidu.com",
+            "export": self.get_commands_cli("export") + " " + self.get_execute_yaml_path("export_yaml_path"),
             "split": self.get_commands_cli("split") + " " + self.get_execute_yaml_path("export_yaml_path"),
             "eval": self.get_commands_cli("eval") + " " + self.get_execute_yaml_path("eval_yaml_path"),
             "chat": self.get_commands_cli("server") + " " + self.get_execute_yaml_path("chat_yaml_path"),
-            "train_sft":  "ping www.baidu.com",
+            "train_sft": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_sft_yaml_path"),
             "train_dpo": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_dpo_yaml_path"),
         }
 
