@@ -309,3 +309,16 @@ class CommandRunner:
         self.current_output = ""
         self.progress_line_buffer = {}
         return ""
+
+    def is_running(self) -> bool:
+        """
+        Check if there is an active process being executed.
+
+        Args:
+            self: Instance reference
+
+        Returns:
+            bool: True if there is an active process, False otherwise
+        """
+        process = self.current_process
+        return process is not None and process.returncode is None

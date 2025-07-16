@@ -167,7 +167,25 @@ ALERTS = {
             "zh": "数据集{}: 缺失相关数据({})",
             "en": "Dataset {}: Missing relevant data ({})"
         }
-    }
+    },
+    "merge_is_running": {
+        "warning": {
+            "zh": "当前merge任务正在进行中，请等待完成或停止后再执行",
+            "en": "Current merge task is being performed, wait until it completes or stop it first",
+        }
+    },
+    "split_is_running": {
+        "warning": {
+            "zh": "当前split任务正在进行中，请等待完成或停止后再执行",
+            "en": "Current split task is being performed, wait until it completes or stop it first",
+        }
+    },
+    "allow_switch_button": {
+        "info": {
+            "zh": "命令成功启动，预览命令行按钮之间切换不影响命令执行",
+            "en": "Command started successfully, switching between preview commands does not affect execution",
+        }
+    },
 }
 
 

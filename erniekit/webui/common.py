@@ -217,11 +217,11 @@ class ConfigManager:
             str: Formatted command string
         """
         execute_command = {
-            "export": self.get_commands_cli("export") + " " + self.get_execute_yaml_path("export_yaml_path"),
+            "export": "ping www.baidu.com",
             "split": self.get_commands_cli("split") + " " + self.get_execute_yaml_path("export_yaml_path"),
             "eval": self.get_commands_cli("eval") + " " + self.get_execute_yaml_path("eval_yaml_path"),
             "chat": self.get_commands_cli("server") + " " + self.get_execute_yaml_path("chat_yaml_path"),
-            "train_sft": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_sft_yaml_path"),
+            "train_sft":  "ping www.baidu.com",
             "train_dpo": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_dpo_yaml_path"),
         }
 
@@ -512,47 +512,6 @@ def parse_string_to_list(value):
             return value
 
     return value
-
-
-def format_list_value(value, is_numeric=False):
-    """
-    Format list values by adding quotes for strings, omitting quotes for numbers,
-    and handling boolean strings specially.
-
-    Args:
-        value: List value to format
-        is_numeric (bool): Whether to force conversion to numeric type
-
-    Returns:
-        str: Formatted string with a marker indicating quotes should be stripped
-    """
-    if not isinstance(value, list):
-        return value
-
-    formatted_items = []
-    for item in value:
-        if is_numeric:
-            try:
-                num_value = float(item)
-                if num_value.is_integer():
-                    formatted_items.append(str(int(num_value)))
-                else:
-                    formatted_items.append(str(num_value))
-            except (ValueError, TypeError):
-                formatted_items.append(f'"{item!s}"')
-        elif isinstance(item, str):
-            if item.lower() == "true":
-                formatted_items.append("True")
-            elif item.lower() == "false":
-                formatted_items.append("False")
-            else:
-                formatted_items.append(f'"{item}"')
-        elif isinstance(item, (int, float)):
-            formatted_items.append(str(item))
-        else:
-            formatted_items.append(f'"{item!s}"')
-
-    return f"__NOQUOTE_START__[{','.join(formatted_items)}]__NOQUOTE_END__"
 
 
 def convert_boolean_strings(value):

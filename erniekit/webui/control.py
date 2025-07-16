@@ -762,21 +762,28 @@ def setup_start_button(manager, runner, module):
             "",
         )
 
-    async def start_execution(stage):
+    async def start_execution(stage_value):
         if module == "train":
-            execute_path = f"train_{stage.lower()}_yaml_path"
-            command_name = f"train_{stage.lower()}"
+            execute_path = f"train_{stage_value.lower()}_yaml_path"
+            command_name = f"train_{stage_value.lower()}"
         else:
             execute_path = module + "_yaml_path"
             command_name = module
 
         update_config_yaml(manager, execute_path, module)
         command = config.get_execute_command(command_name)
+        gr.Info(alert.get("allow_switch_button", "info"))
 
         async for output in execute_command(runner, command):
             yield output
 
     async def start_export_merge_execution():
+        if runner.is_running():
+            gr.Warning(alert.get("split_is_running", "warning"))
+            return
+
+        gr.Info(alert.get("allow_switch_button", "info"))
+
         execute_path = "export_yaml_path"
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("export")
@@ -785,6 +792,12 @@ def setup_start_button(manager, runner, module):
             yield output
 
     async def start_export_split_execution():
+        if runner.is_running():
+            gr.Warning(alert.get("merge_is_running", "warning"))
+            return
+
+        gr.Info(alert.get("allow_switch_button", "info"))
+
         execute_path = "export_yaml_path"
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("split")
@@ -1411,7 +1424,7 @@ def create_dynamic_form_component(
         manager,
         demo: gr.Blocks,
         default_dataset,
-        max_rows: int = 20
+        max_rows: int = 30
 ):
 
     """
@@ -1648,6 +1661,7 @@ def create_dynamic_form_component(
         return [
             add_dataset_btn,
             save_dataset_btn,
+            dataset_tip,
             *delete_buttons,
             *row_outputs
         ]
@@ -1656,6 +1670,7 @@ def create_dynamic_form_component(
         add_dataset_btn_la = la.get(key="add_dataset_btn", lang=language, prop="value")
         save_dataset_btn_la = la.get(key="save_dataset_btn", lang=language, prop="value")
         delete_btn_la = la.get(key="delete_dataset_btn", lang=language, prop="value")
+        dataset_tip_la = la.get(key="dataset_tip", lang=language, prop="value")
 
         delete_btn_updates = [gr.update(value=delete_btn_la) for _ in delete_buttons]
         row_updates = []
@@ -1672,6 +1687,7 @@ def create_dynamic_form_component(
         return (
             gr.update(value=add_dataset_btn_la),
             gr.update(value=save_dataset_btn_la),
+            gr.update(value=dataset_tip_la),
             *delete_btn_updates,
             *row_updates
         )
@@ -1682,6 +1698,7 @@ def create_dynamic_form_component(
     overlay = gr.Column(visible=False, elem_classes="modal-overlay-1")
 
     with gr.Column(visible=False, elem_classes="modal-box-1") as popup:
+        dataset_tip = gr.Markdown()
 
         with gr.Row():
             add_dataset_btn = gr.Button(variant="primary")

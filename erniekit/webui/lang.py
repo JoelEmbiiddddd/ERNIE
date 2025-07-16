@@ -770,6 +770,10 @@ LOCALES = {
         "en": {
             "label": "Dataset Probability",
         },
+    },
+    "dataset_tip": {
+        "zh": {"value": "### Tips: 请选择相应的数据集，其中Customization为自定义数据集，填入数据集地址和数据集概率"},
+        "en": {"value": "### Tips: Please select the appropriate dataset, where Customization means custom datasets"}
     }
 }
 
