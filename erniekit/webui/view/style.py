@@ -221,3 +221,13 @@ html_log = """
          style="width: 520px; height: auto; border: none; box-shadow: none;">
 </div>
 """
+
+html_progress = """
+<div style="width: 100%; background-color: #f0f0f0; border-radius: 10px; padding: 3px; margin: 10px 0;">
+    <div style="width: {}%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); 
+    height: 19px; border-radius: 8px; display: flex; align-items: center; 
+    justify-content: center; color: white; font-weight: bold; font-size: 14px;">
+        {}%
+    </div>
+</div>
+"""
