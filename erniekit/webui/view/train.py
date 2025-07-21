@@ -293,26 +293,52 @@ def build(manager):
             start_btn = gr.Button(variant="primary")
             stop_btn = gr.Button(variant="stop")
 
-        with gr.Column() as output_container:
-            command_preview = gr.Code(
-                language="shell",
-                lines=15,
-                visible=False,
-                elem_classes="general-height-output textarea hide-copy-code",
-            )
+        with gr.Row():
+            progress_display = gr.HTML(value="""
+                <div style="width: 100%; background-color: #f0f0f0; border-radius: 10px; padding: 3px; margin: 10px 0;">
+                    <div style="width: 0%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px;">
+                        0%
+                    </div>
+                </div>
+                """,
+                label="进度显示", visible=False)
 
-            output_text = gr.Textbox(
-                lines=15,
-                interactive=False,
-                elem_classes="general-height-output textarea",
-            )
+        with gr.Row() as output_container:
+            with gr.Column(scale=6):
+                command_preview = gr.Code(
+                    language="shell",
+                    lines=15,
+                    visible=False,
+                    elem_classes="general-height-output textarea hide-copy-code",
+                )
 
-        clear_btn = gr.Button(variant="secondary")
+                output_text = gr.Textbox(
+                    lines=15,
+                    interactive=False,
+                    elem_classes="general-height-output textarea",
+                )
+
+            with gr.Column(scale=4, visible=False) as output_plot_column:
+                train_loss_plot = gr.LinePlot(
+                    x="Step",
+                    y="Loss",
+                    title="Training Loss Curve",
+                    x_title="Training Steps",
+                    y_title="Loss Value",
+                    width=600,
+                    height=400,
+                    color_map={"Loss": "blue"},
+                )
+
+        with gr.Row():
+            clear_btn = gr.Button(variant="secondary")
+            open_close_plot_btn = gr.Button(variant="secondary", visible=False)
 
     manager.add_elem("train", "preview_command_btn", preview_command_btn)
     manager.add_elem("train", "start_btn", start_btn)
     manager.add_elem("train", "stop_btn", stop_btn)
     manager.add_elem("train", "command_preview", command_preview)
+    manager.add_elem("train", "open_close_plot_btn", open_close_plot_btn)
 
     manager.add_elem("train", "output_text", output_text)
     manager.add_elem("train", "output_container", output_container)
@@ -414,6 +440,9 @@ def build(manager):
     manager.add_elem("train", "eval_dataset_save_btn", eval_dataset_elem['save_dataset_btn'])
     manager.add_elem("train", "eval_dataset_btn", eval_dataset_elem['dataset_btn'])
     manager.add_elem("train", "eval_dataset_preview_btn", eval_dataset_preview_btn)
+    manager.add_elem("train", "progress_display", progress_display)
+    manager.add_elem("train", "train_loss_plot", train_loss_plot)
+    manager.add_elem("train", "output_plot_column", output_plot_column)
 
     manager.add_module_dependency(
         source_module_id="basic",

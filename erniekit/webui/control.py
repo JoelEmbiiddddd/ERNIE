@@ -30,6 +30,7 @@ from erniekit.webui.alert import alert
 from erniekit.webui.chatbot import chatbot as chat_generator
 from erniekit.webui.common import config
 from erniekit.webui.runner import CommandRunner
+from erniekit.webui.view.style import html_progress
 
 has_shown_info = False
 
@@ -109,6 +110,38 @@ def train_reaction(manager, runner, module):
     setup_save_dataset_btn_update(manager, module, "train")
     handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
+    train_plot_reaction(manager)
+
+
+def train_plot_reaction(manager):
+    """
+    Perform plotting configuration reactions for model setup.
+
+    Args:
+        manager (manager): Configuration manager for component values
+
+    """
+    open_close_plot_btn = manager.get_elem_by_id("train", "open_close_plot_btn")
+    start_btn = manager.get_elem_by_id("train", "start_btn")
+    output_plot_column = manager.get_elem_by_id("train", "output_plot_column")
+
+    def open_btn_and_plot():
+        output_plot_column.visible = True
+        return gr.update(visible=True), gr.update(visible=True)
+
+    def toggle_plot_visibility():
+
+        if output_plot_column.visible == False:
+            output_plot_column.visible = True
+            return gr.update(visible=True)
+
+        output_plot_column.visible = False
+        return gr.update(visible=False)
+
+    start_btn.click(fn=open_btn_and_plot,
+                    outputs=[output_plot_column, open_close_plot_btn])
+
+    open_close_plot_btn.click(fn=toggle_plot_visibility, outputs=[output_plot_column])
 
 
 def train_epochs_change(manager):
@@ -689,8 +722,8 @@ async def execute_command(runner, command):
         runner (object): Execution context or runner instance
         command (str): Command string to be executed
     """
-    async for output, _, _ in runner.execute(command):
-        yield output
+    async for output, percentage in runner.execute(command):
+        yield output, percentage
 
 
 def chat_load_model_button(manager, runner):
@@ -753,6 +786,8 @@ def setup_start_button(manager, runner, module):
     start_merge_btn = manager.get_elem_by_id("export", "start_merge_btn")
     start_split_btn = manager.get_elem_by_id("export", "start_split_btn")
     stage = manager.get_elem_by_id("train", "stage")
+    progress_display = manager.get_elem_by_id(module, "progress_display")
+    train_loss_plot = manager.get_elem_by_id("train", "train_loss_plot")
 
     def show_output_text():
         return (
@@ -774,8 +809,22 @@ def setup_start_button(manager, runner, module):
         command = config.get_execute_command(command_name)
         gr.Info(alert.get("allow_switch_button", "info"))
 
-        async for output in execute_command(runner, command):
-            yield output
+        if progress_display:
+            runner.update_loss_tracker_config()
+            async for output, percentage in execute_command(runner, command):
+                yield output, gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
+                                        visible=True)
+        else:
+            async for output, percentage in execute_command(runner, command):
+                yield output
+
+    async def loss_plot():
+        start_loss = True
+        while start_loss:
+            yield runner.get_plot()
+            # await asyncio.sleep(3)
+            if not runner.is_running():
+                start_loss = False
 
     async def start_export_merge_execution():
         if runner.is_running():
@@ -805,7 +854,19 @@ def setup_start_button(manager, runner, module):
         async for output in execute_command(runner, command):
             yield output
 
-    if start_btn and output_text:
+    if start_btn and output_text and progress_display:
+        start_btn.click(
+            fn=show_output_text,
+            inputs=[],
+            outputs=[command_preview, output_text, output_container, output_text],
+        ).then(fn=start_execution, inputs=[stage], outputs=[output_text, progress_display])
+
+        start_btn.click(
+            fn=loss_plot,
+            outputs=[train_loss_plot]
+        )
+
+    elif start_btn and output_text:
         start_btn.click(
             fn=show_output_text,
             inputs=[],
@@ -1415,6 +1476,7 @@ def update_config_yaml(manager, execute_path, module, is_preview=False):
             "train_dataset_btn",
             "eval_dataset_preview_btn",
             "train_dataset_preview_btn",
+            "progress_display"
         ],
         is_preview,
     )

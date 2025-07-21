@@ -141,6 +141,21 @@ class ConfigManager:
 
         return result
 
+    def update_user_dict(self, module, value, update_value):
+        """
+        Updates a specified value in the user configuration dictionary with robust error handling.
+
+        Args:
+            module (str): The name of the configuration module.
+            value (str): The name of the configuration item to update.
+            update_value: The new configuration value.
+        """
+
+        if module not in self._user_default_config:
+            return
+        module_config = self._user_default_config[module]
+        module_config[value] = update_value
+
     def _init_user_dict(self):
         """
         Load user configuration from YAML file
@@ -659,6 +674,22 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         dict: New configuration dictionary with replaced values
     """
 
+    def update_output_dir(manager_input, config_dict_input):
+        if config_dict_input["output_dir_view"]:
+            config_dict_input["output_dir"] = config_dict_input["output_dir_view"]
+        else:
+            config_dict_input["output_dir"] = mkdir_output_dir(manager_input, is_preview)
+
+    def update_logging_dir(config_dict_input, basic_config_input, module):
+        config_dict_input["logging_dir"] = os.path.join(basic_config_input["output_dir"], config.get_path_config("logging_dir"))
+        config.update_user_dict(module, "logging_dir", config_dict_input["logging_dir"])
+
+    def update_dataset_info(module_config, train_eval_type):
+        dataset_group = module_config[train_eval_type + "_dataset_group"]
+        module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(dataset_group, "col1")
+        module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(dataset_group, "col2")
+        module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(dataset_group, "col3")
+
     basic_config = config_dict.get("basic", {})
     train_config = config_dict.get("train", {})
     eval_config = config_dict.get("eval", {})
@@ -666,44 +697,23 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
     chat_config = config_dict.get("chat", {})
 
     if train_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = mkdir_output_dir(manager, is_preview)
-
-        train_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
+        update_output_dir(manager, basic_config)
+        update_logging_dir(train_config, basic_config, "train")
         update_dataset_info(train_config, "train")
         update_dataset_info(train_config, "eval")
 
     if eval_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        eval_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
-
+        update_output_dir(manager, basic_config)
+        update_logging_dir(eval_config, basic_config, "eval")
         update_dataset_info(eval_config, "eval")
 
     if export_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        export_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
+        update_output_dir(manager, basic_config)
+        update_logging_dir(export_config, basic_config, "export")
 
     if chat_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        chat_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
+        update_output_dir(manager, basic_config)
+        update_logging_dir(chat_config, basic_config, "chat")
 
     if basic_config != {}:
         export_paddle_log(basic_config["output_dir"])
@@ -761,21 +771,6 @@ def extract_dataset_and_join(json_str, col_key):
     except:
         return ""
 
-
-def update_dataset_info(module_config, train_eval_type):
-    """
-    Update dataset configuration in module_config by extracting and joining dataset metadata.
-
-    Args:
-        module_config (dict): Configuration dictionary for the module
-        train_eval_type (str): Type of dataset operation (e.g., "train" or "eval")
-    """
-    dataset_group = module_config[train_eval_type + "_dataset_group"]
-    module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(dataset_group, "col1")
-    module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(dataset_group, "col2")
-    module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(dataset_group, "col3")
-
-
 def export_paddle_log(output_dir):
     """
     Configure PaddlePaddle logging directory for distributed training.
@@ -786,3 +781,33 @@ def export_paddle_log(output_dir):
 
     paddle_log_dir = os.path.join(output_dir, config.get_path_config("paddle_log_dir"))
     os.environ["ERNIEKIT_DIST_LOG"] = paddle_log_dir
+
+def parse_item(item_str):
+    """
+    Parse a string and convert it into a dictionary format.
+    Args:
+        item_str: The input string to be parsed.
+
+    Returns:
+        A dictionary converted from the string.
+
+    """
+    result = {}
+    lines = item_str.strip().split('\n')
+    for line in lines:
+        if ':' in line:
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip()
+            # 尝试转换为数值类型
+            try:
+                value = int(value)
+            except ValueError:
+                try:
+                    value = float(value)
+                except ValueError:
+                    # 去除字符串两端的引号
+                    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                        value = value[1:-1]
+            result[key] = value
+    return result

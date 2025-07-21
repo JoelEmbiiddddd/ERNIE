@@ -20,8 +20,14 @@ import asyncio
 import os
 import re
 import subprocess
+import time
+
+from visualdl import LogReader
+import pandas as pd
+import threading
 
 from erniekit.webui import common
+from erniekit.webui.common import config
 from erniekit.webui.alert import alert
 
 
@@ -35,7 +41,9 @@ class CommandRunner:
         self.track_progress = True
         self.current = 0
         self.total = 0
+        self.percentage = 0
         self.progress_line_buffer = {}
+        self.loss_tracker = LossTracker()
 
     async def execute(self, command: str):
         """
@@ -53,8 +61,9 @@ class CommandRunner:
         separator = "\n" + "-" * 50 + "\n"
         start_text = alert.get("progress", "run_command").format(separator, command) + "\n"
         self.lines_history.extend([start_text])
+        self.loss_tracker.opne_loss_track = True
 
-        yield "\n".join(self.lines_history), 0, 0
+        yield "\n".join(self.lines_history), 0
 
         print("\n" + start_text, flush=True)
         process = None
@@ -67,6 +76,7 @@ class CommandRunner:
                 command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
             )
             self.current_process = process
+            self.percentage = 0
 
             buffer = b""
             while True:
@@ -92,13 +102,14 @@ class CommandRunner:
                         self._parse_progress(line_clean)
 
                         if should_update:
-                            yield "\n".join(self.lines_history), self.current, self.total
-
+                            yield ("\n".join(self.lines_history),
+                                   self.compute_percentage(self.current, self.total))
         except Exception as e:
             error_msg = alert.get("progress", "execution_error").format(str(e))
             self.lines_history.append(error_msg)
             print(error_msg, flush=True)
-            yield "\n".join(self.lines_history), self.current, self.total
+            yield ("\n".join(self.lines_history),
+                   self.compute_percentage(self.current, self.total))
 
         finally:
             self._flush_progress_buffer()
@@ -109,7 +120,9 @@ class CommandRunner:
                     success_msg = alert.get("progress", "progress_success")
                     self.lines_history.append(f"\n{success_msg}")
                     print(f"\n{success_msg}", flush=True)
-                    yield "\n".join(self.lines_history), self.current, self.total
+                    yield ("\n".join(self.lines_history),
+                           self.compute_percentage(self.current, self.total))
+
             self.current_process = None
 
     def _extract_next_line(self, buffer):
@@ -322,3 +335,88 @@ class CommandRunner:
         """
         process = self.current_process
         return process is not None and process.returncode is None
+
+    def compute_percentage(self, current, total):
+
+        if total == 0:
+            return self.percentage
+        progress_ratio = current / total
+        self.percentage = progress_ratio * 100
+
+        return self.percentage
+
+    def get_plot(self):
+        return self.loss_tracker.get_plot_data()
+
+    def update_loss_tracker_config(self):
+        self.loss_tracker.update_loss_config()
+
+
+class LossTracker:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.log_path = None
+        self.log_module = None
+        self.log_tag = None
+        self.opne_loss_track = True
+
+    def update_loss_config(self):
+        """更新日志配置（路径、模块、标签）"""
+        user_log_path = config.get_default_user_dict("basic", "log_path")
+        user_log_module = config.get_default_user_dict("basic", "log_module")
+        user_log_tag = config.get_default_user_dict("basic", "log_tag")
+
+        if user_log_path:
+            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+        else:
+            train_log_name = "vdlrecords.%010d.log" % (time.time())
+            # self.log_path = os.path.join("./runs/mnist_experiment", "vdlrecords.1752656211.log")
+            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), train_log_name)
+
+        if user_log_module:
+            self.log_module = user_log_module
+        else:
+            self.log_module = "scalar"
+
+        if user_log_tag:
+            self.log_tag = user_log_tag
+        else:
+            self.log_tag = "train_avg_loss"
+
+    def get_plot_data(self):
+        """
+        读取完整日志数据并返回适合gr.LinePlot的数据格式
+        每次调用都会重新读取日志文件，返回全部损失数据
+        """
+
+        if not self.opne_loss_track:
+            return pd.DataFrame({"Step": [0], "Loss": [0]})
+
+        try:
+            # 读取日志文件获取完整数据
+            reader = LogReader(file_path=self.log_path)
+            data = reader.get_data(self.log_module, self.log_tag)
+
+            with self.lock:
+                losses = []
+                steps = []
+
+                for item in data:
+                    value = item.value
+                    step = item.id
+                    losses.append(value)
+                    steps.append(step)
+
+                if not losses:
+                    return pd.DataFrame({"Step": [0], "Loss": [0]})
+
+                return pd.DataFrame({
+                    "Step": steps,
+                    "Loss": losses
+                })
+
+        except Exception as e:
+            print(f"读取日志失败: {e}")
+            self.opne_loss_track = False
+            # 返回默认DataFrame
+            return pd.DataFrame({"Step": [0], "Loss": [0]})
