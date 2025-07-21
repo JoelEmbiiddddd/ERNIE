@@ -822,7 +822,7 @@ def setup_start_button(manager, runner, module):
         start_loss = True
         while start_loss:
             yield runner.get_plot()
-            # await asyncio.sleep(3)
+            await asyncio.sleep(5)
             if not runner.is_running():
                 start_loss = False
 

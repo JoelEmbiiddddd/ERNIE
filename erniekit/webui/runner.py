@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import time
+import glob
 
 from visualdl import LogReader
 import pandas as pd
@@ -61,7 +62,6 @@ class CommandRunner:
         separator = "\n" + "-" * 50 + "\n"
         start_text = alert.get("progress", "run_command").format(separator, command) + "\n"
         self.lines_history.extend([start_text])
-        self.loss_tracker.opne_loss_track = True
 
         yield "\n".join(self.lines_history), 0
 
@@ -353,15 +353,21 @@ class CommandRunner:
 
 
 class LossTracker:
+
     def __init__(self):
         self.lock = threading.Lock()
         self.log_path = None
         self.log_module = None
         self.log_tag = None
-        self.opne_loss_track = True
 
     def update_loss_config(self):
-        """更新日志配置（路径、模块、标签）"""
+        """
+        Update the logging configuration (path, module, labels).
+
+        Returns:
+            None
+        """
+
         user_log_path = config.get_default_user_dict("basic", "log_path")
         user_log_module = config.get_default_user_dict("basic", "log_module")
         user_log_tag = config.get_default_user_dict("basic", "log_tag")
@@ -369,9 +375,14 @@ class LossTracker:
         if user_log_path:
             self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
         else:
-            train_log_name = "vdlrecords.%010d.log" % (time.time())
-            # self.log_path = os.path.join("./runs/mnist_experiment", "vdlrecords.1752656211.log")
-            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), train_log_name)
+            search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
+            log_files = glob.glob(search_pattern)
+
+            if not log_files:
+                return
+
+            latest_file = max(log_files, key=os.path.getmtime)
+            self.log_path = os.path.abspath(latest_file)
 
         if user_log_module:
             self.log_module = user_log_module
@@ -381,19 +392,23 @@ class LossTracker:
         if user_log_tag:
             self.log_tag = user_log_tag
         else:
-            self.log_tag = "train_avg_loss"
+            self.log_tag = "train/loss"
 
     def get_plot_data(self):
         """
-        读取完整日志数据并返回适合gr.LinePlot的数据格式
-        每次调用都会重新读取日志文件，返回全部损失数据
+        Read the complete log data and return it in a format suitable for gr.LinePlot.
+        Each call rereads the log file and returns all loss data.
+
+        Returns:
+            None
         """
 
-        if not self.opne_loss_track:
-            return pd.DataFrame({"Step": [0], "Loss": [0]})
-
         try:
-            # 读取日志文件获取完整数据
+            self.update_loss_config()
+
+            if self.log_path is None:
+                return pd.DataFrame({"Step": [0], "Loss": [0]})
+
             reader = LogReader(file_path=self.log_path)
             data = reader.get_data(self.log_module, self.log_tag)
 
@@ -417,6 +432,5 @@ class LossTracker:
 
         except Exception as e:
             print(f"读取日志失败: {e}")
-            self.opne_loss_track = False
             # 返回默认DataFrame
             return pd.DataFrame({"Step": [0], "Loss": [0]})
