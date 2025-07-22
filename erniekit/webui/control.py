@@ -820,13 +820,13 @@ def setup_start_button(manager, runner, module):
                 yield output
 
     async def loss_plot():
-        start_loss = True
-        runner.loss_tracker.start_new_training()
-        while start_loss:
+        await asyncio.sleep(2)
+        while runner.is_loss_monitoring_active():
+            await asyncio.sleep(2)
             yield runner.get_plot()
-            await asyncio.sleep(5)
-            if not runner.is_running():
-                start_loss = False
+
+        runner.loss_tracker.clear_history_data()
+        yield runner.get_plot()
 
     async def start_export_merge_execution():
         if runner.is_running():
@@ -867,7 +867,6 @@ def setup_start_button(manager, runner, module):
             fn=loss_plot,
             outputs=[train_loss_plot]
         )
-
     elif start_btn and output_text:
         start_btn.click(
             fn=show_output_text,

@@ -20,7 +20,6 @@ import asyncio
 import os
 import re
 import subprocess
-import time
 import glob
 
 from visualdl import LogReader
@@ -45,6 +44,7 @@ class CommandRunner:
         self.percentage = 0
         self.progress_line_buffer = {}
         self.loss_tracker = LossTracker()
+        self._loss_monitoring_active = False
 
     async def execute(self, command: str):
         """
@@ -62,6 +62,8 @@ class CommandRunner:
         separator = "\n" + "-" * 50 + "\n"
         start_text = alert.get("progress", "run_command").format(separator, command) + "\n"
         self.lines_history.extend([start_text])
+        self._loss_monitoring_active = True
+        self.loss_tracker.start_monitoring()
 
         yield "\n".join(self.lines_history), 0
 
@@ -113,7 +115,7 @@ class CommandRunner:
 
         finally:
             self._flush_progress_buffer()
-
+            print("hello")
             if process:
                 return_code = await process.wait()
                 if return_code == 0:
@@ -124,6 +126,7 @@ class CommandRunner:
                            self.compute_percentage(self.current, self.total))
 
             self.current_process = None
+            self.loss_tracker.stop_monitoring()
 
     def _extract_next_line(self, buffer):
         """
@@ -337,6 +340,17 @@ class CommandRunner:
         return process is not None and process.returncode is None
 
     def compute_percentage(self, current, total):
+        """
+        Calculate the percentage of progress.
+
+        Args:
+        self: Instance reference
+        current: Current progress value
+        total: Total progress value
+
+        Returns:
+        float: The computed percentage. Returns the existing percentage if total is 0.
+        """
 
         if total == 0:
             return self.percentage
@@ -346,10 +360,30 @@ class CommandRunner:
         return self.percentage
 
     def get_plot(self):
+        """
+        Retrieve the plot data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        The plot data obtained from the loss tracker.
+        """
+
+        self.loss_tracker.update_loss_config()
         return self.loss_tracker.get_plot_data()
 
-    def update_loss_tracker_config(self):
-        self.loss_tracker.update_loss_config()
+    def is_loss_monitoring_active(self):
+        """
+        Check if loss monitoring is active.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        bool: True if loss monitoring is active and there is an active process, False otherwise.
+        """
+        return self._loss_monitoring_active and self.is_running()
 
 
 class LossTracker:
@@ -359,37 +393,102 @@ class LossTracker:
         self.log_path = None
         self.log_module = None
         self.log_tag = None
-        self.training_start_time = None
+        self.loss_history = []
+        self.step_history = []
+        self.monitoring_task = None
+        self.is_monitoring = False
+        self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
 
-    def start_new_training(self):
+    def start_monitoring(self):
         """
-        Start a new training session.
+        Start the loss monitoring coroutine.
+
+        Args:
+        self: Instance reference
+
         Returns:
-
+        None
         """
-        self.training_start_time = time.time()
+        if self.monitoring_task is None or self.monitoring_task.done():
+            self.is_monitoring = True
+            self.monitoring_task = asyncio.create_task(self._monitoring_loop())
+
+    def stop_monitoring(self):
+        """
+        Stop the loss monitoring coroutine and clear history data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+        self.is_monitoring = False
+        if self.monitoring_task and not self.monitoring_task.done():
+            self.monitoring_task.cancel()
+        self.clear_history_data()
+
+    async def _monitoring_loop(self):
+        """
+        Background monitoring loop that periodically reads plot data.
+
+        Continuously checks for new data while monitoring is active,
+        with a 3-second interval between checks.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+
+        try:
+
+            while self.is_monitoring:
+                try:
+                    plot_data = self._read_plot_data()
+                    if plot_data is not None:
+                        self.latest_plot_data = plot_data
+                except Exception as e:
+                    print("Loss Tracker Error: ", e)
+                await asyncio.sleep(3)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print("Loss Tracker Error: ", e)
+        finally:
+            self.is_monitoring = False
 
     def update_loss_config(self):
         """
-        Update the logging configuration (path, module, labels).
+        Update log configuration parameters including path, module and tag.
+
+        Retrieves user configurations and sets default values if none are provided.
+        Automatically finds the latest log file if no path is specified.
+
+        Args:
+        self: Instance reference
 
         Returns:
-            None
+        None
         """
 
         user_log_path = config.get_default_user_dict("basic", "log_path")
         user_log_module = config.get_default_user_dict("basic", "log_module")
         user_log_tag = config.get_default_user_dict("basic", "log_tag")
 
-        if user_log_path is None:
-            search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
-            log_files = glob.glob(search_pattern)
+        if self.log_path is None:
+            if user_log_path is None:
+                search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
+                log_files = glob.glob(search_pattern)
 
-            if log_files:
-                latest_file = max(log_files, key=os.path.getmtime)
-                self.log_path = os.path.abspath(latest_file)
-        else:
-            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+                if log_files:
+                    latest_file = max(log_files, key=os.path.getmtime)
+                    self.log_path = os.path.abspath(latest_file)
+                else:
+                    self.log_path = None
+            else:
+                self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
 
         if user_log_module is None:
             self.log_module = "scalar"
@@ -401,46 +500,80 @@ class LossTracker:
         else:
             self.log_tag = user_log_tag
 
-    def get_plot_data(self):
+    def _read_plot_data(self):
         """
-        Read the complete log data and return it in a format suitable for gr.LinePlot.
-        Each call rereads the log file and returns all loss data.
+        Read and process plot data from the log file (internal method).
+
+        Reads log data using the configured parameters and returns it in
+        a DataFrame format with steps and corresponding loss values.
+
+        Args:
+        self: Instance reference
 
         Returns:
-            None
+        pandas.DataFrame: DataFrame containing "Step" and "Loss" columns.
+        Returns default empty data if log path is None or error occurs.
         """
 
         try:
-            self.update_loss_config()
 
             if self.log_path is None:
-                return
+                return pd.DataFrame({"Step": [0], "Loss": [0]})
 
             reader = LogReader(file_path=self.log_path)
             data = reader.get_data(self.log_module, self.log_tag)
 
             with self.lock:
-                losses = []
-                steps = []
+                self.loss_history = []
+                self.step_history = []
 
                 for item in data:
-                    if hasattr(item, 'timestamp') and self.training_start_time:
-                        if item.timestamp < self.training_start_time:
-                            continue
-
                     value = item.value
                     step = item.id
-                    losses.append(value)
-                    steps.append(step)
+                    self.loss_history.append(value)
+                    self.step_history.append(step)
 
-                if not losses:
+                if not self.loss_history:
                     return pd.DataFrame({"Step": [0], "Loss": [0]})
 
                 return pd.DataFrame({
-                    "Step": steps,
-                    "Loss": losses
+                    "Step": self.step_history,
+                    "Loss": self.loss_history
                 })
 
         except Exception as e:
-            print(f"读取日志失败: {e}")
+            print("Loss Tracker Error: ", e)
             return pd.DataFrame({"Step": [0], "Loss": [0]})
+
+    def get_plot_data(self):
+        """
+        Retrieve the latest plot data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        pandas.DataFrame: The most recently updated plot data containing
+        "Step" and "Loss" columns.
+        """
+
+        return self.latest_plot_data
+
+    def clear_history_data(self):
+        """
+        Clear all historical data and reset log path and plot data.
+
+        Uses a lock to ensure thread-safe data clearing.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+
+        with self.lock:
+            self.step_history = []
+            self.loss_history = []
+            self.log_path = None
+            self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
