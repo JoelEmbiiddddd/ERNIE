@@ -1826,7 +1826,7 @@ def create_dynamic_form_component(
 
                 return update_handler
 
-            col.change(
+            col.blur(
                 fn=create_update_handler(i, j),
                 inputs=[form_data, col],
                 outputs=[form_data, output_textbox, row_cols[1], row_cols[2], row_cols[3]]
