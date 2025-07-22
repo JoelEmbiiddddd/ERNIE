@@ -154,8 +154,10 @@ def build(manager):
                     demo=manager.demo,
                     default_dataset=default_train_train_dataset,
                     )
-            train_dataset_preview_btn = gr.Button()
-            control.react_preview_dataset_button(manager, train_dataset_preview_btn, "train", "train")
+
+            with gr.Column():
+                train_dataset_preview_btn = gr.Button()
+                control.react_preview_dataset_button(manager, train_dataset_preview_btn, "train", "train")
 
         with gr.Row():
             eval_dataset_path = gr.Textbox(
@@ -178,9 +180,9 @@ def build(manager):
                     demo=manager.demo,
                     default_dataset=default_train_eval_dataset,
                     )
-
-            eval_dataset_preview_btn = gr.Button()
-            control.react_preview_dataset_button(manager, eval_dataset_preview_btn, "train", "eval")
+            with gr.Column():
+                eval_dataset_preview_btn = gr.Button()
+                control.react_preview_dataset_button(manager, eval_dataset_preview_btn, "train", "eval")
 
         with gr.Accordion(open=False) as dataloader_parameters_tab:
             with gr.Row():

@@ -111,6 +111,7 @@ def train_reaction(manager, runner, module):
     handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
     train_plot_reaction(manager)
+    train_progress_display(manager, runner)
 
 
 def train_plot_reaction(manager):
@@ -164,6 +165,26 @@ def train_epochs_change(manager):
         pass
 
     num_train_epochs.change(fn=on_num_train_epochs_change, inputs=[max_steps], outputs=[])
+
+
+def train_progress_display(manager, runner):
+    progress_display = manager.get_elem_by_id("train", "progress_display")
+    max_steps = manager.get_elem_by_id("train", "max_steps")
+    start_btn = manager.get_elem_by_id("train", "start_btn")
+
+    def train_progress_compute(max_steps_value):
+        vdl_data = runner.get_plot()
+        percentage = runner.compute_percentage(len(vdl_data), max_steps_value)
+        return gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
+                                        visible=True)
+
+    start_btn.click(
+        fn=train_progress_compute,
+        inputs=[max_steps],
+        outputs=[progress_display]
+    )
+
+
 
 
 def react_preview_dataset_button(manager, preview_button, module, elem_type):
@@ -812,11 +833,10 @@ def setup_start_button(manager, runner, module):
         gr.Info(alert.get("allow_switch_button", "info"))
 
         if progress_display:
-            async for output, percentage in execute_command(runner, command):
-                yield output, gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
-                                        visible=True)
+            async for output, _ in execute_command(runner, command):
+                yield output
         else:
-            async for output, percentage in execute_command(runner, command):
+            async for output, _ in execute_command(runner, command):
                 yield output
 
     async def loss_plot():
@@ -861,7 +881,7 @@ def setup_start_button(manager, runner, module):
             fn=show_output_text,
             inputs=[],
             outputs=[command_preview, output_text, output_container, output_text],
-        ).then(fn=start_execution, inputs=[stage], outputs=[output_text, progress_display])
+        ).then(fn=start_execution, inputs=[stage], outputs=[output_text])
 
         start_btn.click(
             fn=loss_plot,

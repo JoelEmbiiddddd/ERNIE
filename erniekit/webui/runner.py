@@ -115,7 +115,6 @@ class CommandRunner:
 
         finally:
             self._flush_progress_buffer()
-            print("hello")
             if process:
                 return_code = await process.wait()
                 if return_code == 0:
