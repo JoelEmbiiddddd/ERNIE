@@ -475,29 +475,33 @@ class LossTracker:
         user_log_path = config.get_default_user_dict("basic", "log_path")
         user_log_module = config.get_default_user_dict("basic", "log_module")
         user_log_tag = config.get_default_user_dict("basic", "log_tag")
+        try:
+            if self.log_path is None:
+                if user_log_path is None:
+                    search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
+                    log_files = glob.glob(search_pattern)
 
-        if self.log_path is None:
-            if user_log_path is None:
-                search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
-                log_files = glob.glob(search_pattern)
-
-                if log_files:
-                    latest_file = max(log_files, key=os.path.getmtime)
-                    self.log_path = os.path.abspath(latest_file)
+                    if log_files:
+                        latest_file = max(log_files, key=os.path.getmtime)
+                        self.log_path = os.path.abspath(latest_file)
+                    else:
+                        self.log_path = None
                 else:
-                    self.log_path = None
+                    self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+
+            if user_log_module is None:
+                self.log_module = "scalar"
             else:
-                self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+                self.log_module = user_log_module
 
-        if user_log_module is None:
+            if user_log_tag is None:
+                self.log_tag = "train/loss"
+            else:
+                self.log_tag = user_log_tag
+        except:
+            self.log_path = None
             self.log_module = "scalar"
-        else:
-            self.log_module = user_log_module
-
-        if user_log_tag is None:
             self.log_tag = "train/loss"
-        else:
-            self.log_tag = user_log_tag
 
     def _read_plot_data(self):
         """

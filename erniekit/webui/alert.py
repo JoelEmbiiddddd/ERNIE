@@ -186,6 +186,12 @@ ALERTS = {
             "en": "Command started successfully, switching between preview commands does not affect execution",
         }
     },
+    "model_is_None": {
+        "warning": {
+            "zh": "模型路径不能为空",
+            "en": "Model path can not be none"
+        }
+    }
 }
 
 

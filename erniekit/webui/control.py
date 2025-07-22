@@ -44,7 +44,7 @@ def basic_reaction(manager):
 
     """
     setup_model_name_or_path_update(manager)
-    reflash_compute_type_by_fine_tuning(manager)
+    update_compute_type_by_fine_tuning(manager)
 
 
 def eval_reaction(manager, runner, module):
@@ -132,7 +132,7 @@ def train_plot_reaction(manager):
 
     def toggle_plot_visibility():
 
-        if output_plot_column.visible == False:
+        if not output_plot_column.visible:
             output_plot_column.visible = True
             return gr.update(visible=True)
 
@@ -185,14 +185,13 @@ def train_progress_display(manager, runner):
     )
 
 
-
-
 def react_preview_dataset_button(manager, preview_button, module, elem_type):
     """
     Render dataset preview buttons with support for multiple datasets, pagination,
     and dataset switching.
 
     Args:
+        preview_button:
         elem_type:
         manager (Manager): Component manager instance
         module (str): Module identifier (e.g., "train", "eval")
@@ -649,7 +648,7 @@ def setup_model_name_or_path_update(manager):
     model_source.change(fn=update_path_selector, inputs=[model_name, model_source], outputs=[model_name_or_path])
 
 
-def reflash_compute_type_by_fine_tuning(manager):
+def update_compute_type_by_fine_tuning(manager):
     """
     Refresh compute type based on fine-tuning configuration.
 
@@ -811,6 +810,7 @@ def setup_start_button(manager, runner, module):
     stage = manager.get_elem_by_id("train", "stage")
     progress_display = manager.get_elem_by_id(module, "progress_display")
     train_loss_plot = manager.get_elem_by_id("train", "train_loss_plot")
+    model_name_or_path = manager.get_elem_by_id("basic", "model_name_or_path")
 
     def show_output_text():
         return (
@@ -820,10 +820,16 @@ def setup_start_button(manager, runner, module):
             "",
         )
 
-    async def start_execution(stage_value):
+    async def start_execution(stage_value, model_name_or_path_value):
         if module == "train":
             execute_path = f"train_{stage_value.lower()}_yaml_path"
             command_name = f"train_{stage_value.lower()}"
+
+            if not model_name_or_path_value:
+                gr.Warning(alert.get("model_is_None", "warning", "zh"))
+                yield gr.update()
+                return
+
         else:
             execute_path = module + "_yaml_path"
             command_name = module
@@ -876,23 +882,19 @@ def setup_start_button(manager, runner, module):
         async for output in execute_command(runner, command):
             yield output
 
-    if start_btn and output_text and progress_display:
+    if start_btn and output_text:
         start_btn.click(
             fn=show_output_text,
             inputs=[],
             outputs=[command_preview, output_text, output_container, output_text],
-        ).then(fn=start_execution, inputs=[stage], outputs=[output_text])
+        ).then(fn=start_execution, inputs=[stage, model_name_or_path], outputs=[output_text])
 
-        start_btn.click(
-            fn=loss_plot,
-            outputs=[train_loss_plot]
-        )
-    elif start_btn and output_text:
-        start_btn.click(
-            fn=show_output_text,
-            inputs=[],
-            outputs=[command_preview, output_text, output_container, output_text],
-        ).then(fn=start_execution, inputs=[stage], outputs=output_text)
+        if module == "train":
+            start_btn.click(
+                fn=loss_plot,
+                outputs=[train_loss_plot]
+            )
+
 
     if start_merge_btn and start_split_btn:
         start_merge_btn.click(
@@ -1536,6 +1538,29 @@ def create_dynamic_form_component(
         int_keys = [int(k) for k in form_data.keys()]
         return max(int_keys) + 1
 
+    def save_and_hide(form_data):
+        if form_data is not None and form_data:
+            for row_key, row_data in form_data.items():
+                dataset_name = row_data.get("col0", "")
+                if dataset_name == "":
+                    continue
+                missing_fields = []
+
+                if not row_data.get("col1"):
+                    missing_fields.append("type")
+                if not row_data.get("col2"):
+                    missing_fields.append("path")
+                if not row_data.get("col3"):
+                    missing_fields.append("prob")
+
+                if missing_fields:
+                    missing_str = "、".join(missing_fields)
+                    warnings_str = alert.get("dataset_none_data", "warning").format(dataset_name, missing_str)
+                    gr.Warning(warnings_str)
+                    return gr.Column(visible=True), gr.Column(visible=True)
+
+        return gr.Column(visible=False), gr.Column(visible=False)
+
     def get_display_to_actual_mapping(form_data):
         if not form_data:
             return {}
@@ -1709,28 +1734,6 @@ def create_dynamic_form_component(
 
     def show_popup():
         return gr.Column(visible=True), gr.Column(visible=True)
-
-    def save_and_hide(form_data):
-        if form_data is not None and form_data:
-            for row_key, row_data in form_data.items():
-                dataset_name = row_data.get("col0", "")
-                if dataset_name == "":
-                    continue
-                missing_fields = []
-
-                if not row_data.get("col1"):
-                    missing_fields.append("type")
-                if not row_data.get("col2"):
-                    missing_fields.append("path")
-                if not row_data.get("col3"):
-                    missing_fields.append("prob")
-
-                if missing_fields:
-                    missing_str = "、".join(missing_fields)
-                    warnings_str = alert.get("dataset_none_data", "warning").format(dataset_name, missing_str)
-                    gr.Warning(warnings_str)
-
-        return gr.Column(visible=False), gr.Column(visible=False)
 
     def add_row_with_output(form_data, *visibility_checks):
         result = add_row(form_data, *visibility_checks)
