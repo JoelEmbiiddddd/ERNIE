@@ -40,6 +40,17 @@ def build(manager):
 
     with gr.Tab() as chat_tab:
         chat_info = gr.HTML()
+
+        with gr.Row():
+            progress_display = gr.HTML(value="""
+                <div style="width: 100%; background-color: #f0f0f0; border-radius: 10px; padding: 3px; margin: 10px 0;">
+                    <div style="width: 0%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px;">
+                        0%
+                    </div>
+                </div>
+                """,visible=False
+                )
+
         with gr.Row():
             with gr.Column(scale=7):
                 output_text = gr.Textbox(
@@ -140,6 +151,7 @@ def build(manager):
     manager.add_elem("chat", "unload_model_btn", unload_model_btn)
     manager.add_elem("chat", "stop_btn", stop_btn)
     manager.add_elem("chat", "chat_info", chat_info)
+    manager.add_elem("chat", "progress_display", progress_display)
 
     manager.add_elem("chat", "port", port, default_port)
     manager.add_elem("chat", "save_port", save_port, default_port)

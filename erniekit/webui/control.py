@@ -739,16 +739,18 @@ def chat_load_model_button(manager, runner):
     output_text = manager.get_elem_by_id("chat", "output_text")
     port = manager.get_elem_by_id("chat", "port")
     save_port = manager.get_elem_by_id("chat", "save_port")
+    progress_display = manager.get_elem_by_id("chat", "progress_display")
 
     async def chat_start_execution(port):
 
         update_config_yaml(manager, "chat_yaml_path", "chat")
 
         command = config.get_execute_command("chat")
-        async for output in execute_command(runner, command):
-            yield output, gr.update(value=port)
+        async for output, percentage in execute_command(runner, command):
+            yield output, gr.update(value=port), gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
+                                        visible=True)
 
-    load_model_btn.click(fn=chat_start_execution, inputs=[port], outputs=[output_text, save_port])
+    load_model_btn.click(fn=chat_start_execution, inputs=[port], outputs=[output_text, save_port, progress_display])
 
 
 def chat_upload_model_button(manager, runner):
@@ -810,7 +812,6 @@ def setup_start_button(manager, runner, module):
         gr.Info(alert.get("allow_switch_button", "info"))
 
         if progress_display:
-            runner.update_loss_tracker_config()
             async for output, percentage in execute_command(runner, command):
                 yield output, gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
                                         visible=True)
@@ -820,6 +821,7 @@ def setup_start_button(manager, runner, module):
 
     async def loss_plot():
         start_loss = True
+        runner.loss_tracker.start_new_training()
         while start_loss:
             yield runner.get_plot()
             await asyncio.sleep(5)

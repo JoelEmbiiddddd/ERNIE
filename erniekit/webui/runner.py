@@ -359,6 +359,15 @@ class LossTracker:
         self.log_path = None
         self.log_module = None
         self.log_tag = None
+        self.training_start_time = None
+
+    def start_new_training(self):
+        """
+        Start a new training session.
+        Returns:
+
+        """
+        self.training_start_time = time.time()
 
     def update_loss_config(self):
         """
@@ -372,27 +381,25 @@ class LossTracker:
         user_log_module = config.get_default_user_dict("basic", "log_module")
         user_log_tag = config.get_default_user_dict("basic", "log_tag")
 
-        if user_log_path:
-            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
-        else:
+        if user_log_path is None:
             search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
             log_files = glob.glob(search_pattern)
 
-            if not log_files:
-                return
-
-            latest_file = max(log_files, key=os.path.getmtime)
-            self.log_path = os.path.abspath(latest_file)
-
-        if user_log_module:
-            self.log_module = user_log_module
+            if log_files:
+                latest_file = max(log_files, key=os.path.getmtime)
+                self.log_path = os.path.abspath(latest_file)
         else:
+            self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+
+        if user_log_module is None:
             self.log_module = "scalar"
-
-        if user_log_tag:
-            self.log_tag = user_log_tag
         else:
+            self.log_module = user_log_module
+
+        if user_log_tag is None:
             self.log_tag = "train/loss"
+        else:
+            self.log_tag = user_log_tag
 
     def get_plot_data(self):
         """
@@ -407,7 +414,7 @@ class LossTracker:
             self.update_loss_config()
 
             if self.log_path is None:
-                return pd.DataFrame({"Step": [0], "Loss": [0]})
+                return
 
             reader = LogReader(file_path=self.log_path)
             data = reader.get_data(self.log_module, self.log_tag)
@@ -417,6 +424,10 @@ class LossTracker:
                 steps = []
 
                 for item in data:
+                    if hasattr(item, 'timestamp') and self.training_start_time:
+                        if item.timestamp < self.training_start_time:
+                            continue
+
                     value = item.value
                     step = item.id
                     losses.append(value)
@@ -432,5 +443,4 @@ class LossTracker:
 
         except Exception as e:
             print(f"读取日志失败: {e}")
-            # 返回默认DataFrame
             return pd.DataFrame({"Step": [0], "Loss": [0]})
