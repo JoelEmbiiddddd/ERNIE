@@ -1,4 +1,4 @@
-# Copyright (c) 2025 PaddlePaddle Authors. All Rights Reserved.
+
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -110,11 +110,10 @@ def train_reaction(manager, runner, module):
     setup_save_dataset_btn_update(manager, module, "train")
     handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
-    train_plot_reaction(manager)
-    train_progress_display(manager, runner)
+    train_plot_and_progress_reaction(manager, runner)
 
 
-def train_plot_reaction(manager):
+def train_plot_and_progress_reaction(manager, runner):
     """
     Perform plotting configuration reactions for model setup.
 
@@ -125,8 +124,16 @@ def train_plot_reaction(manager):
     open_close_plot_btn = manager.get_elem_by_id("train", "open_close_plot_btn")
     start_btn = manager.get_elem_by_id("train", "start_btn")
     output_plot_column = manager.get_elem_by_id("train", "output_plot_column")
+    train_loss_plot = manager.get_elem_by_id("train", "train_loss_plot")
+    progress_display = manager.get_elem_by_id("train", "progress_display")
+    max_steps = manager.get_elem_by_id("train", "max_steps")
 
     def open_btn_and_plot():
+        loss_plot_data = runner.get_plot()
+
+        if len(loss_plot_data) < 2:
+            return gr.update(), gr.update()
+
         output_plot_column.visible = True
         return gr.update(visible=True), gr.update(visible=True)
 
@@ -138,6 +145,39 @@ def train_plot_reaction(manager):
 
         output_plot_column.visible = False
         return gr.update(visible=False)
+
+    async def loss_plot():
+        await asyncio.sleep(2)
+        while runner.is_loss_monitoring_active():
+            await asyncio.sleep(2)
+            loss_plot_data = runner.get_plot()
+            yield loss_plot_data
+
+        runner.loss_tracker.clear_history_data()
+        yield runner.get_plot()
+
+    async def train_progress_compute(max_steps_value):
+        while runner.is_loss_monitoring_active():
+            await asyncio.sleep(2)
+            vdl_data = runner.get_plot()
+            percentage = runner.compute_percentage(len(vdl_data), max_steps_value)
+
+            if percentage == 0:
+                yield gr.update()
+
+            yield gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
+                                        visible=True)
+
+    start_btn.click(
+        fn=loss_plot,
+        outputs=[train_loss_plot]
+    )
+
+    start_btn.click(
+        fn=train_progress_compute,
+        inputs=[max_steps],
+        outputs=[progress_display]
+    )
 
     start_btn.click(fn=open_btn_and_plot,
                     outputs=[output_plot_column, open_close_plot_btn])
@@ -165,24 +205,6 @@ def train_epochs_change(manager):
         pass
 
     num_train_epochs.change(fn=on_num_train_epochs_change, inputs=[max_steps], outputs=[])
-
-
-def train_progress_display(manager, runner):
-    progress_display = manager.get_elem_by_id("train", "progress_display")
-    max_steps = manager.get_elem_by_id("train", "max_steps")
-    start_btn = manager.get_elem_by_id("train", "start_btn")
-
-    def train_progress_compute(max_steps_value):
-        vdl_data = runner.get_plot()
-        percentage = runner.compute_percentage(len(vdl_data), max_steps_value)
-        return gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
-                                        visible=True)
-
-    start_btn.click(
-        fn=train_progress_compute,
-        inputs=[max_steps],
-        outputs=[progress_display]
-    )
 
 
 def react_preview_dataset_button(manager, preview_button, module, elem_type):
@@ -762,7 +784,6 @@ def chat_load_model_button(manager, runner):
     progress_display = manager.get_elem_by_id("chat", "progress_display")
 
     async def chat_start_execution(port):
-
         update_config_yaml(manager, "chat_yaml_path", "chat")
 
         command = config.get_execute_command("chat")
@@ -808,8 +829,6 @@ def setup_start_button(manager, runner, module):
     start_merge_btn = manager.get_elem_by_id("export", "start_merge_btn")
     start_split_btn = manager.get_elem_by_id("export", "start_split_btn")
     stage = manager.get_elem_by_id("train", "stage")
-    progress_display = manager.get_elem_by_id(module, "progress_display")
-    train_loss_plot = manager.get_elem_by_id("train", "train_loss_plot")
     model_name_or_path = manager.get_elem_by_id("basic", "model_name_or_path")
 
     def show_output_text():
@@ -838,21 +857,8 @@ def setup_start_button(manager, runner, module):
         command = config.get_execute_command(command_name)
         gr.Info(alert.get("allow_switch_button", "info"))
 
-        if progress_display:
-            async for output, _ in execute_command(runner, command):
-                yield output
-        else:
-            async for output, _ in execute_command(runner, command):
-                yield output
-
-    async def loss_plot():
-        await asyncio.sleep(2)
-        while runner.is_loss_monitoring_active():
-            await asyncio.sleep(2)
-            yield runner.get_plot()
-
-        runner.loss_tracker.clear_history_data()
-        yield runner.get_plot()
+        async for output, _ in execute_command(runner, command):
+            yield output
 
     async def start_export_merge_execution():
         if runner.is_running():
@@ -888,12 +894,6 @@ def setup_start_button(manager, runner, module):
             inputs=[],
             outputs=[command_preview, output_text, output_container, output_text],
         ).then(fn=start_execution, inputs=[stage, model_name_or_path], outputs=[output_text])
-
-        if module == "train":
-            start_btn.click(
-                fn=loss_plot,
-                outputs=[train_loss_plot]
-            )
 
 
     if start_merge_btn and start_split_btn:
