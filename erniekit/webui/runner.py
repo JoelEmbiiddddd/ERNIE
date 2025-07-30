@@ -396,6 +396,7 @@ class LossTracker:
         self.step_history = []
         self.monitoring_task = None
         self.is_monitoring = False
+        self.last_logging_path = None
         self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def start_monitoring(self):
@@ -442,7 +443,6 @@ class LossTracker:
         """
 
         try:
-
             while self.is_monitoring:
                 try:
                     plot_data = self._read_plot_data()
@@ -475,10 +475,12 @@ class LossTracker:
         user_log_path = config.get_default_user_dict("basic", "log_path")
         user_log_module = config.get_default_user_dict("basic", "log_module")
         user_log_tag = config.get_default_user_dict("basic", "log_tag")
+        logging_dir = config.get_default_user_dict("train", "logging_dir")
+
         try:
-            if self.log_path is None:
+            if self.log_path is None and logging_dir != self.last_logging_path:
                 if user_log_path is None:
-                    search_pattern = os.path.join(config.get_default_user_dict("train", "logging_dir"), "*.log")
+                    search_pattern = os.path.join(logging_dir, "*.log")
                     log_files = glob.glob(search_pattern)
 
                     if log_files:
@@ -487,7 +489,9 @@ class LossTracker:
                     else:
                         self.log_path = None
                 else:
-                    self.log_path = os.path.join(config.get_default_user_dict("train", "logging_dir"), user_log_path)
+                    self.log_path = os.path.join(logging_dir, user_log_path)
+
+                self.last_logging_path = logging_dir
 
             if user_log_module is None:
                 self.log_module = "scalar"

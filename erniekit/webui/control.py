@@ -128,17 +128,7 @@ def train_plot_and_progress_reaction(manager, runner):
     progress_display = manager.get_elem_by_id("train", "progress_display")
     max_steps = manager.get_elem_by_id("train", "max_steps")
 
-    def open_btn_and_plot():
-        loss_plot_data = runner.get_plot()
-
-        if len(loss_plot_data) < 2:
-            return gr.update(), gr.update()
-
-        output_plot_column.visible = True
-        return gr.update(visible=True), gr.update(visible=True)
-
     def toggle_plot_visibility():
-
         if not output_plot_column.visible:
             output_plot_column.visible = True
             return gr.update(visible=True)
@@ -148,15 +138,32 @@ def train_plot_and_progress_reaction(manager, runner):
 
     async def loss_plot():
         await asyncio.sleep(2)
+        button_shown = False  # 跟踪按钮是否已显示
+
         while runner.is_loss_monitoring_active():
             await asyncio.sleep(2)
             loss_plot_data = runner.get_plot()
-            yield loss_plot_data
 
-        runner.loss_tracker.clear_history_data()
-        yield runner.get_plot()
+            # 检查数据长度，如果大于2且按钮未显示，则显示按钮和绘图区域
+            if len(loss_plot_data) > 2 and not button_shown:
+                button_shown = True
+                # 显示绘图区域和按钮
+                output_plot_column.visible = True
+                # 这里需要通过yield返回多个更新
+                yield loss_plot_data, gr.update(visible=True), gr.update(visible=True)
+            else:
+                yield loss_plot_data, gr.update(), gr.update()
+
+        # 训练结束后的最终数据
+        final_data = runner.get_plot()
+        if len(final_data) > 2 and not button_shown:
+            output_plot_column.visible = True
+            yield final_data, gr.update(visible=True), gr.update(visible=True)
+        else:
+            yield final_data, gr.update(), gr.update()
 
     async def train_progress_compute(max_steps_value):
+        await asyncio.sleep(3)
         while runner.is_loss_monitoring_active():
             await asyncio.sleep(2)
             vdl_data = runner.get_plot()
@@ -164,13 +171,14 @@ def train_plot_and_progress_reaction(manager, runner):
 
             if percentage == 0:
                 yield gr.update()
+                return
 
             yield gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
-                                        visible=True)
+                            visible=True)
 
     start_btn.click(
         fn=loss_plot,
-        outputs=[train_loss_plot]
+        outputs=[train_loss_plot, output_plot_column, open_close_plot_btn]
     )
 
     start_btn.click(
@@ -179,8 +187,9 @@ def train_plot_and_progress_reaction(manager, runner):
         outputs=[progress_display]
     )
 
-    start_btn.click(fn=open_btn_and_plot,
-                    outputs=[output_plot_column, open_close_plot_btn])
+    # 移除原来的open_btn_and_plot，因为现在由loss_plot控制
+    # start_btn.click(fn=open_btn_and_plot,
+    #                outputs=[output_plot_column, open_close_plot_btn])
 
     open_close_plot_btn.click(fn=toggle_plot_visibility, outputs=[output_plot_column])
 
