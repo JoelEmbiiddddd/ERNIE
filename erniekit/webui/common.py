@@ -771,6 +771,7 @@ def extract_dataset_and_join(json_str, col_key):
     except:
         return ""
 
+
 def export_paddle_log(output_dir):
     """
     Configure PaddlePaddle logging directory for distributed training.
@@ -781,33 +782,3 @@ def export_paddle_log(output_dir):
 
     paddle_log_dir = os.path.join(output_dir, config.get_path_config("paddle_log_dir"))
     os.environ["ERNIEKIT_DIST_LOG"] = paddle_log_dir
-
-def parse_item(item_str):
-    """
-    Parse a string and convert it into a dictionary format.
-    Args:
-        item_str: The input string to be parsed.
-
-    Returns:
-        A dictionary converted from the string.
-
-    """
-    result = {}
-    lines = item_str.strip().split('\n')
-    for line in lines:
-        if ':' in line:
-            key, value = line.split(':', 1)
-            key = key.strip()
-            value = value.strip()
-            # 尝试转换为数值类型
-            try:
-                value = int(value)
-            except ValueError:
-                try:
-                    value = float(value)
-                except ValueError:
-                    # 去除字符串两端的引号
-                    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-                        value = value[1:-1]
-            result[key] = value
-    return result

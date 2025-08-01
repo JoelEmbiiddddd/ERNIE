@@ -486,12 +486,12 @@ class LossTracker:
                     if log_files:
                         latest_file = max(log_files, key=os.path.getmtime)
                         self.log_path = os.path.abspath(latest_file)
+                        self.last_logging_path = logging_dir
                     else:
                         self.log_path = None
                 else:
                     self.log_path = os.path.join(logging_dir, user_log_path)
-
-                self.last_logging_path = logging_dir
+                    self.last_logging_path = logging_dir
 
             if user_log_module is None:
                 self.log_module = "scalar"
@@ -582,5 +582,8 @@ class LossTracker:
         with self.lock:
             self.step_history = []
             self.loss_history = []
-            self.log_path = None
-            self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
+            self.latest_plot_data = self.get_plot_data()
+
+    def reset_latest_plot_data(self):
+        self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
+        self.log_path = None

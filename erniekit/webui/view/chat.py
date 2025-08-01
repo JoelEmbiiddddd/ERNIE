@@ -48,7 +48,7 @@ def build(manager):
                         0%
                     </div>
                 </div>
-                """,visible=False
+                """, visible=False
                 )
 
         with gr.Row():

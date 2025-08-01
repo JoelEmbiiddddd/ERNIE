@@ -119,8 +119,8 @@ def train_plot_and_progress_reaction(manager, runner):
 
     Args:
         manager (manager): Configuration manager for component values
-
     """
+
     open_close_plot_btn = manager.get_elem_by_id("train", "open_close_plot_btn")
     start_btn = manager.get_elem_by_id("train", "start_btn")
     output_plot_column = manager.get_elem_by_id("train", "output_plot_column")
@@ -129,52 +129,55 @@ def train_plot_and_progress_reaction(manager, runner):
     max_steps = manager.get_elem_by_id("train", "max_steps")
 
     def toggle_plot_visibility():
-        if not output_plot_column.visible:
-            output_plot_column.visible = True
-            return gr.update(visible=True)
+        output_plot_column.visible = not output_plot_column.visible
+        return gr.update(visible=output_plot_column.visible)
 
-        output_plot_column.visible = False
-        return gr.update(visible=False)
+    def create_plot_updates(should_show):
+        if should_show:
+            output_plot_column.visible = True
+            return gr.update(visible=True), gr.update(visible=True)
+        return gr.update(), gr.update()
 
     async def loss_plot():
-        await asyncio.sleep(2)
-        button_shown = False  # 跟踪按钮是否已显示
+        await asyncio.sleep(5)
+        button_shown = False
+        runner.loss_tracker.reset_latest_plot_data()
 
         while runner.is_loss_monitoring_active():
             await asyncio.sleep(2)
             loss_plot_data = runner.get_plot()
 
-            # 检查数据长度，如果大于2且按钮未显示，则显示按钮和绘图区域
-            if len(loss_plot_data) > 2 and not button_shown:
+            should_show = len(loss_plot_data) > 1 and not button_shown
+            if should_show:
                 button_shown = True
-                # 显示绘图区域和按钮
-                output_plot_column.visible = True
-                # 这里需要通过yield返回多个更新
-                yield loss_plot_data, gr.update(visible=True), gr.update(visible=True)
-            else:
-                yield loss_plot_data, gr.update(), gr.update()
 
-        # 训练结束后的最终数据
+            column_update, button_update = create_plot_updates(should_show)
+            yield loss_plot_data, column_update, button_update
+
         final_data = runner.get_plot()
-        if len(final_data) > 2 and not button_shown:
-            output_plot_column.visible = True
-            yield final_data, gr.update(visible=True), gr.update(visible=True)
-        else:
-            yield final_data, gr.update(), gr.update()
+        should_show_final = len(final_data) > 2 and not button_shown
+        column_update, button_update = create_plot_updates(should_show_final)
+        yield final_data, column_update, button_update
 
     async def train_progress_compute(max_steps_value):
         await asyncio.sleep(3)
+
         while runner.is_loss_monitoring_active():
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
             vdl_data = runner.get_plot()
             percentage = runner.compute_percentage(len(vdl_data), max_steps_value)
 
-            if percentage == 0:
+            if percentage == 0.0:
                 yield gr.update()
                 return
 
-            yield gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
-                            visible=True)
+            progress_html = html_progress.format(percentage, f"{percentage:.1f}")
+            yield gr.update(value=progress_html, visible=True)
+
+    open_close_plot_btn.click(
+        fn=toggle_plot_visibility,
+        outputs=[output_plot_column]
+    )
 
     start_btn.click(
         fn=loss_plot,
@@ -186,12 +189,6 @@ def train_plot_and_progress_reaction(manager, runner):
         inputs=[max_steps],
         outputs=[progress_display]
     )
-
-    # 移除原来的open_btn_and_plot，因为现在由loss_plot控制
-    # start_btn.click(fn=open_btn_and_plot,
-    #                outputs=[output_plot_column, open_close_plot_btn])
-
-    open_close_plot_btn.click(fn=toggle_plot_visibility, outputs=[output_plot_column])
 
 
 def train_epochs_change(manager):
@@ -798,7 +795,7 @@ def chat_load_model_button(manager, runner):
         command = config.get_execute_command("chat")
         async for output, percentage in execute_command(runner, command):
             yield output, gr.update(value=port), gr.update(value=html_progress.format(percentage, f"{percentage:.1f}"),
-                                        visible=True)
+                                        visible=False)
 
     load_model_btn.click(fn=chat_start_execution, inputs=[port], outputs=[output_text, save_port, progress_display])
 
