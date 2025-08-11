@@ -56,7 +56,10 @@ LOCALES = {
     },
     "model_name": {
         "zh": {"label": "模型名称", "info": "模型名称，Customization为自定义模型"},
-        "en": {"label": "model name", "info": "Model name, Customization means a custom model"},
+        "en": {
+            "label": "model name",
+            "info": "Model name, Customization means a custom model",
+        },
     },
     "model_name_or_path": {
         "zh": {"label": "模型路径", "info": "模型的具体路径"},
@@ -118,7 +121,11 @@ LOCALES = {
         "en": {"label": "temperature", "info": "Settings related to temperature"},
     },
     "eval_dataset_path": {
-        "zh": {"label": "评测数据路径", "info": "关于评测数据路径的相关设置", "placeholder": "多个路径请以 , 隔开"},
+        "zh": {
+            "label": "评测数据路径",
+            "info": "关于评测数据路径的相关设置",
+            "placeholder": "多个路径请以 , 隔开",
+        },
         "en": {
             "label": "eval dataset path",
             "info": "Settings related to eval dataset path",
@@ -126,7 +133,11 @@ LOCALES = {
         },
     },
     "eval_dataset_prob": {
-        "zh": {"label": "评测数据概率", "info": "关于评测数据概率的相关设置", "placeholder": "多个概率请以 , 隔开"},
+        "zh": {
+            "label": "评测数据概率",
+            "info": "关于评测数据概率的相关设置",
+            "placeholder": "多个概率请以 , 隔开",
+        },
         "en": {
             "label": "eval dataset prob",
             "info": "Settings related to eval dataset prob",
@@ -143,7 +154,10 @@ LOCALES = {
     },
     "max_shard_size": {
         "zh": {"label": "最大分块大小(GB)", "info": "单个模型文件的最大大小"},
-        "en": {"label": "max shard size(GB)", "info": "Settings related to max shard size"},
+        "en": {
+            "label": "max shard size(GB)",
+            "info": "Settings related to max shard size",
+        },
     },
     "output_dir_view": {
         "zh": {"label": "导出目录", "info": "保存导出模型的文件夹路径"},
@@ -177,7 +191,11 @@ LOCALES = {
         },
     },
     "train_dataset_prob": {
-        "zh": {"label": "训练数据概率", "info": "关于训练数据概率的相关设置", "placeholder": "多个概率请以 , 隔开"},
+        "zh": {
+            "label": "训练数据概率",
+            "info": "关于训练数据概率的相关设置",
+            "placeholder": "多个概率请以 , 隔开",
+        },
         "en": {
             "label": "train dataset prob",
             "info": "Settings related to train dataset prob",
@@ -322,7 +340,10 @@ LOCALES = {
         "en": {"label": "logging steps", "info": "Number of steps between two logs."},
     },
     "save_strategy": {
-        "zh": {"label": "checkpoint保存策略", "info": "关于checkpoint保存策略的相关设置"},
+        "zh": {
+            "label": "checkpoint保存策略",
+            "info": "关于checkpoint保存策略的相关设置",
+        },
         "en": {
             "label": "checkpoint save strategy",
             "info": "Settings related to checkpoint save strategy",
@@ -653,8 +674,14 @@ LOCALES = {
             "info": "The available GPU number of this machine",
         },
     },
-    "dataset_preview_title": {"zh": {"value": "### 数据集预览"}, "en": {"value": "### Dataset Preview"}},
-    "page_info": {"zh": {"value": "第 {} 页，共 {} 页"}, "en": {"value": "Page {}, Total Pages {}"}},
+    "dataset_preview_title": {
+        "zh": {"value": "### 数据集预览"},
+        "en": {"value": "### Dataset Preview"},
+    },
+    "page_info": {
+        "zh": {"value": "第 {} 页，共 {} 页"},
+        "en": {"value": "Page {}, Total Pages {}"},
+    },
     "dataset_info": {
         "zh": {"value": "（**数据集** {}/{}） 当前预览地址: {}"},
         "en": {"value": "(**Dataset** {}/{})  Current preview path: {}"},
@@ -703,7 +730,7 @@ LOCALES = {
         },
         "en": {
             "value": "Setting Eval Dataset",
-        }
+        },
     },
     "train_dataset_btn": {
         "zh": {
@@ -711,7 +738,7 @@ LOCALES = {
         },
         "en": {
             "value": "Setting Train Dataset",
-        }
+        },
     },
     "add_dataset_btn": {
         "zh": {
@@ -719,7 +746,7 @@ LOCALES = {
         },
         "en": {
             "value": "Add Dataset",
-        }
+        },
     },
     "save_dataset_btn": {
         "zh": {
@@ -727,7 +754,7 @@ LOCALES = {
         },
         "en": {
             "value": "Save Dataset And Exit",
-        }
+        },
     },
     "delete_dataset_btn": {
         "zh": {
@@ -735,7 +762,7 @@ LOCALES = {
         },
         "en": {
             "value": "Delete Dataset",
-        }
+        },
     },
     "eval_dataset_preview_btn": {
         "zh": {
@@ -743,16 +770,9 @@ LOCALES = {
         },
         "en": {
             "value": "Preview Eval Dataset",
-        }
-    },
-    "dataset": {
-        "zh": {
-            "label": "数据集"
         },
-        "en": {
-            "label": "Datasets"
-        }
     },
+    "dataset": {"zh": {"label": "数据集"}, "en": {"label": "Datasets"}},
     "dataset_type": {
         "zh": {"label": "数据集类型"},
         "en": {
@@ -772,23 +792,23 @@ LOCALES = {
         },
     },
     "dataset_tip": {
-        "zh": {"value": "### Tips: 请选择相应的数据集，其中Customization为自定义数据集，填入数据集地址和数据集概率"},
-        "en": {"value": "### Tips: Please select the appropriate dataset, where Customization means custom datasets"}
-    },
-    "open_close_plot_btn": {
         "zh": {
-            "value": "打开/关闭Loss曲线"
+            "value": "### Tips: 请选择相应的数据集，其中Customization为自定义数据集，填入数据集地址和数据集概率"
         },
         "en": {
-            "value": "Open/Close Loss Plot"
-        }
-    }
+            "value": "### Tips: Please select the appropriate dataset, where Customization means custom datasets"
+        },
+    },
+    "open_close_plot_btn": {
+        "zh": {"value": "打开/关闭Loss曲线"},
+        "en": {"value": "Open/Close Loss Plot"},
+    },
 }
 
 
 def get(key, lang=None, prop=None):
     """
-    Retrieves the Chinese translation based on the given key.
+    Retrieves the Chinese translation based on the given key
 
     Args:
         key (str): The key used to look up the translation.

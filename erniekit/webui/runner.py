@@ -17,22 +17,21 @@ Process execution management, initiation, and supervision
 """
 
 import asyncio
+import glob
 import os
 import re
 import subprocess
-import glob
-
-from visualdl import LogReader
-import pandas as pd
 import threading
 
+import pandas as pd
+from visualdl import LogReader
+
 from erniekit.webui import common
-from erniekit.webui.common import config
 from erniekit.webui.alert import alert
+from erniekit.webui.common import config
 
 
 class CommandRunner:
-
     def __init__(self):
         self.current_process = None
         self.process_lock = asyncio.Lock()
@@ -60,7 +59,9 @@ class CommandRunner:
         self.lines_history = []
         self.progress_line_buffer = {}
         separator = "\n" + "-" * 50 + "\n"
-        start_text = alert.get("progress", "run_command").format(separator, command) + "\n"
+        start_text = (
+            alert.get("progress", "run_command").format(separator, command) + "\n"
+        )
         self.lines_history.extend([start_text])
         self._loss_monitoring_active = True
         self.loss_tracker.start_monitoring()
@@ -104,14 +105,18 @@ class CommandRunner:
                         self._parse_progress(line_clean)
 
                         if should_update:
-                            yield ("\n".join(self.lines_history),
-                                   self.compute_percentage(self.current, self.total))
+                            yield (
+                                "\n".join(self.lines_history),
+                                self.compute_percentage(self.current, self.total),
+                            )
         except Exception as e:
             error_msg = alert.get("progress", "execution_error").format(str(e))
             self.lines_history.append(error_msg)
             print(error_msg, flush=True)
-            yield ("\n".join(self.lines_history),
-                   self.compute_percentage(self.current, self.total))
+            yield (
+                "\n".join(self.lines_history),
+                self.compute_percentage(self.current, self.total),
+            )
 
         finally:
             self._flush_progress_buffer()
@@ -121,8 +126,10 @@ class CommandRunner:
                     success_msg = alert.get("progress", "progress_success")
                     self.lines_history.append(f"\n{success_msg}")
                     print(f"\n{success_msg}", flush=True)
-                    yield ("\n".join(self.lines_history),
-                           self.compute_percentage(self.current, self.total))
+                    yield (
+                        "\n".join(self.lines_history),
+                        self.compute_percentage(self.current, self.total),
+                    )
 
             self.current_process = None
             self.loss_tracker.stop_monitoring()
@@ -211,7 +218,9 @@ class CommandRunner:
             percent = int(percent_match.group(1))
             return percent == 0 or percent == 100 or percent % 10 == 0
 
-        return "100%" in line or "complete" in line.lower() or "finished" in line.lower()
+        return (
+            "100%" in line or "complete" in line.lower() or "finished" in line.lower()
+        )
 
     def _update_progress_in_history(self, progress_key, line):
         """
@@ -279,7 +288,9 @@ class CommandRunner:
 
             try:
                 if process.returncode is not None:
-                    progress_end_msg = "\n" + alert.get("progress", "progress_end") + "\n"
+                    progress_end_msg = (
+                        "\n" + alert.get("progress", "progress_end") + "\n"
+                    )
                     self.lines_history.append(progress_end_msg)
                     return "\n".join(self.lines_history)
 
@@ -292,13 +303,17 @@ class CommandRunner:
 
                 if process.returncode is None:
                     process.kill()
-                    force_terminated_msg = "\n" + alert.get("progress", "force_terminated") + "\n"
+                    force_terminated_msg = (
+                        "\n" + alert.get("progress", "force_terminated") + "\n"
+                    )
                     print(force_terminated_msg)
                     self.lines_history.append(force_terminated_msg)
                     await process.wait()
 
                 self.was_terminated_by_user = True
-                user_terminated_msg = "\n" + alert.get("progress", "user_terminated") + "\n"
+                user_terminated_msg = (
+                    "\n" + alert.get("progress", "user_terminated") + "\n"
+                )
                 self.lines_history.append(user_terminated_msg)
                 print(user_terminated_msg)
             except Exception as e:
@@ -386,7 +401,6 @@ class CommandRunner:
 
 
 class LossTracker:
-
     def __init__(self):
         self.lock = threading.Lock()
         self.log_path = None
@@ -502,14 +516,14 @@ class LossTracker:
                 self.log_tag = "train/loss"
             else:
                 self.log_tag = user_log_tag
-        except:
+        except Exception:
             self.log_path = None
             self.log_module = "scalar"
             self.log_tag = "train/loss"
 
     def _read_plot_data(self):
         """
-        Read and process plot data from the log file (internal method).
+        Read and process plot data from the log file (internal method)
 
         Reads log data using the configured parameters and returns it in
         a DataFrame format with steps and corresponding loss values.
@@ -523,7 +537,6 @@ class LossTracker:
         """
 
         try:
-
             if self.log_path is None:
                 return pd.DataFrame({"Step": [0], "Loss": [0]})
 
@@ -543,10 +556,9 @@ class LossTracker:
                 if not self.loss_history:
                     return pd.DataFrame({"Step": [0], "Loss": [0]})
 
-                return pd.DataFrame({
-                    "Step": self.step_history,
-                    "Loss": self.loss_history
-                })
+                return pd.DataFrame(
+                    {"Step": self.step_history, "Loss": self.loss_history}
+                )
 
         except Exception as e:
             print("Loss Tracker Error: ", e)

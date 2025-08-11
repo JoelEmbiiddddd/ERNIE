@@ -27,7 +27,7 @@ def build(manager):
     """
     Chat component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_port = config.get_default_user_dict("chat", "port")
@@ -42,14 +42,16 @@ def build(manager):
         chat_info = gr.HTML()
 
         with gr.Row():
-            progress_display = gr.HTML(value="""
+            progress_display = gr.HTML(
+                value="""
                 <div style="width: 100%; background-color: #f0f0f0; border-radius: 10px; padding: 3px; margin: 10px 0;">
                     <div style="width: 0%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px;">
                         0%
                     </div>
                 </div>
-                """, visible=False
-                )
+                """,
+                visible=False,
+            )
 
         with gr.Row():
             with gr.Column(scale=7):
@@ -120,7 +122,6 @@ def build(manager):
                 clear_btn = gr.Button()
 
         with gr.Column(scale=2):
-
             with gr.Row():
                 chat_input = gr.Textbox(
                     lines=3,
@@ -134,7 +135,6 @@ def build(manager):
                 system_prompt = gr.Textbox(lines=2)
 
         with gr.Column():
-
             thinking_display = gr.Markdown(value="")
 
             response_display = gr.Markdown(value="")

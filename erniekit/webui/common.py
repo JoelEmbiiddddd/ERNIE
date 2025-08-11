@@ -16,7 +16,6 @@
 Configuration, general method handling
 """
 
-
 import ast
 import base64
 import copy
@@ -41,7 +40,6 @@ EXECUTE_PATH = os.path.join(CONFIG_PATH, "execute")
 
 
 class ConfigManager:
-
     def __init__(self):
         self.user_dict = {}
         self.paddle_png_path = os.path.join(CONFIG_PATH, "paddle.png")
@@ -90,11 +88,15 @@ class ConfigManager:
         }
 
         self._init_dataset_elem = [
-            {"type": "dropdown", "options": list(self._dataset_info.keys()) + ["Customization"], "scale": 3},
+            {
+                "type": "dropdown",
+                "options": list(self._dataset_info.keys()) + ["Customization"],
+                "scale": 3,
+            },
             {"type": "dropdown", "options": ["alpaca", "file", "erniekit"], "scale": 2},
             {"type": "textbox", "scale": 7},
-            {"type": "textbox", "scale": 2}
-         ]
+            {"type": "textbox", "scale": 2},
+        ]
 
         self._default_dataset_name = "demo_sft_train"
 
@@ -218,7 +220,9 @@ class ConfigManager:
         Returns:
             _type_: _description_
         """
-        return self._choices_kwargs["model_name_or_path" + "_" + model_source].get(model_name)
+        return self._choices_kwargs["model_name_or_path" + "_" + model_source].get(
+            model_name
+        )
 
     def get_execute_command(self, name):
         """
@@ -232,12 +236,24 @@ class ConfigManager:
             str: Formatted command string
         """
         execute_command = {
-            "export": self.get_commands_cli("export") + " " + self.get_execute_yaml_path("export_yaml_path"),
-            "split": self.get_commands_cli("split") + " " + self.get_execute_yaml_path("export_yaml_path"),
-            "eval": self.get_commands_cli("eval") + " " + self.get_execute_yaml_path("eval_yaml_path"),
-            "chat": self.get_commands_cli("server") + " " + self.get_execute_yaml_path("chat_yaml_path"),
-            "train_sft": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_sft_yaml_path"),
-            "train_dpo": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_dpo_yaml_path"),
+            "export": self.get_commands_cli("export")
+            + " "
+            + self.get_execute_yaml_path("export_yaml_path"),
+            "split": self.get_commands_cli("split")
+            + " "
+            + self.get_execute_yaml_path("export_yaml_path"),
+            "eval": self.get_commands_cli("eval")
+            + " "
+            + self.get_execute_yaml_path("eval_yaml_path"),
+            "chat": self.get_commands_cli("server")
+            + " "
+            + self.get_execute_yaml_path("chat_yaml_path"),
+            "train_sft": self.get_commands_cli("train")
+            + " "
+            + self.get_execute_yaml_path("train_sft_yaml_path"),
+            "train_dpo": self.get_commands_cli("train")
+            + " "
+            + self.get_execute_yaml_path("train_dpo_yaml_path"),
         }
 
         return execute_command.get(name)
@@ -300,11 +316,21 @@ class ConfigManager:
         """
         execute_path_list = self.get_default_dict_module("execute")
         return {
-            "chat_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["chat_yaml_path"]),
-            "export_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["export_yaml_path"]),
-            "eval_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["eval_yaml_path"]),
-            "train_sft_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["train_sft_yaml_path"]),
-            "train_dpo_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["train_dpo_yaml_path"]),
+            "chat_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["chat_yaml_path"]
+            ),
+            "export_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["export_yaml_path"]
+            ),
+            "eval_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["eval_yaml_path"]
+            ),
+            "train_sft_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["train_sft_yaml_path"]
+            ),
+            "train_dpo_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["train_dpo_yaml_path"]
+            ),
         }
 
     def get_gpu_count(self):
@@ -405,7 +431,7 @@ config = ConfigManager()
 
 def yaml_to_args(yaml_path, erniekit_execute):
     """
-    Read YAML configuration file and convert to command line argument string
+    Read YAML configuration file and convert to command line argument string.
 
     Args:
         yaml_path (str): Path to YAML file
@@ -426,7 +452,7 @@ def yaml_to_args(yaml_path, erniekit_execute):
         if isinstance(value, bool):
             args_list.append(f"{indentation}{arg_name} {str(value).lower()} \\")
         elif isinstance(value, list):
-            list_str = ','.join(map(str, value))
+            list_str = ",".join(map(str, value))
             args_list.append(f'{indentation}{arg_name} "{list_str}" \\')
         elif isinstance(value, str):
             args_list.append(f'{indentation}{arg_name} "{value}" \\')
@@ -434,9 +460,15 @@ def yaml_to_args(yaml_path, erniekit_execute):
             args_list.append(f"{indentation}{arg_name} {value} \\")
 
     if args_list:
-        args_list[-1] = args_list[-1].rstrip(' \\')
+        args_list[-1] = args_list[-1].rstrip(" \\")
 
-    return config.get_cuda_visible_devices() + " " + erniekit_execute + " \\\n" + "\n".join(args_list)
+    return (
+        config.get_cuda_visible_devices()
+        + " "
+        + erniekit_execute
+        + " \\\n"
+        + "\n".join(args_list)
+    )
 
 
 def abort_process(pid: int) -> None:
@@ -521,7 +553,6 @@ def parse_string_to_list(value):
 
     if value.strip().startswith("[") and value.strip().endswith("]"):
         try:
-
             return ast.literal_eval(value)
         except (ValueError, SyntaxError):
             return value
@@ -588,12 +619,12 @@ def merge_dict_to_yaml(
             if len(parsed_value) == 1:
                 flattened_dict[key] = str(parsed_value[0])
             else:
-                flattened_dict[key] = ','.join(map(str, parsed_value))
+                flattened_dict[key] = ",".join(map(str, parsed_value))
         else:
             converted_value = convert_boolean_strings(value)
             if isinstance(converted_value, str) and is_numeric_string(converted_value):
                 try:
-                    if '.' in converted_value:
+                    if "." in converted_value:
                         flattened_dict[key] = float(converted_value)
                     else:
                         flattened_dict[key] = int(converted_value)
@@ -611,7 +642,9 @@ def merge_dict_to_yaml(
     yaml_data.update(flattened_dict)
 
     with open(yaml_file_path, "w", encoding="utf-8") as f:
-        yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True, width=1000)
+        yaml.dump(
+            yaml_data, f, default_flow_style=False, allow_unicode=True, width=1000
+        )
 
     with open(yaml_file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -655,7 +688,11 @@ def deep_merge(source, destination):
         dict: Merged dictionary (destination updated in-place and returned)
     """
     for key, value in source.items():
-        if key in destination and isinstance(destination[key], dict) and isinstance(value, dict):
+        if (
+            key in destination
+            and isinstance(destination[key], dict)
+            and isinstance(value, dict)
+        ):
             destination[key] = deep_merge(value, destination[key])
         else:
             destination[key] = value
@@ -678,17 +715,27 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         if config_dict_input["output_dir_view"]:
             config_dict_input["output_dir"] = config_dict_input["output_dir_view"]
         else:
-            config_dict_input["output_dir"] = mkdir_output_dir(manager_input, is_preview)
+            config_dict_input["output_dir"] = mkdir_output_dir(
+                manager_input, is_preview
+            )
 
     def update_logging_dir(config_dict_input, basic_config_input, module):
-        config_dict_input["logging_dir"] = os.path.join(basic_config_input["output_dir"], config.get_path_config("logging_dir"))
+        config_dict_input["logging_dir"] = os.path.join(
+            basic_config_input["output_dir"], config.get_path_config("logging_dir")
+        )
         config.update_user_dict(module, "logging_dir", config_dict_input["logging_dir"])
 
     def update_dataset_info(module_config, train_eval_type):
         dataset_group = module_config[train_eval_type + "_dataset_group"]
-        module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(dataset_group, "col1")
-        module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(dataset_group, "col2")
-        module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(dataset_group, "col3")
+        module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(
+            dataset_group, "col1"
+        )
+        module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(
+            dataset_group, "col2"
+        )
+        module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(
+            dataset_group, "col3"
+        )
 
     basic_config = config_dict.get("basic", {})
     train_config = config_dict.get("train", {})
@@ -766,9 +813,9 @@ def extract_dataset_and_join(json_str, col_key):
     """
     try:
         json_data = json.loads(json_str)
-        column_values = [str(item.get(col_key, '')) for item in json_data.values()]
-        return ','.join(column_values)
-    except:
+        column_values = [str(item.get(col_key, "")) for item in json_data.values()]
+        return ",".join(column_values)
+    except Exception:
         return ""
 
 

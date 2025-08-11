@@ -16,7 +16,6 @@
 Eval component
 """
 
-
 import gradio as gr
 
 from erniekit.webui import control
@@ -28,20 +27,25 @@ def build(manager):
     """
     Eval component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
-    default_eval_dataset_path = config.get_default_user_dict("eval", "eval_dataset_path")
-    default_eval_dataset_prob = config.get_default_user_dict("eval", "eval_dataset_prob")
+    default_eval_dataset_path = config.get_default_user_dict(
+        "eval", "eval_dataset_path"
+    )
+    default_eval_dataset_prob = config.get_default_user_dict(
+        "eval", "eval_dataset_prob"
+    )
     default_eval_eval_dataset = config.get_default_user_dict("eval", "eval_dataset")
 
     default_eval_max_seq_len = config.get_default_user_dict("eval", "max_seq_len")
     default_eval_batch_size = config.get_default_user_dict("eval", "batch_size")
-    default_eval_dataset_type = config.get_default_user_dict("eval", "eval_dataset_type")
+    default_eval_dataset_type = config.get_default_user_dict(
+        "eval", "eval_dataset_type"
+    )
     default_eval_logging_dir = config.get_default_user_dict("eval", "logging_dir")
 
     with gr.Tab() as eval_tab:
-
         with gr.Row():
             eval_dataset_path = gr.Textbox(
                 value=default_eval_dataset_path,
@@ -53,7 +57,9 @@ def build(manager):
                 lines=1,
                 visible=False,
             )
-            eval_dataset_type = gr.Textbox(value=default_eval_dataset_type, visible=False)
+            eval_dataset_type = gr.Textbox(
+                value=default_eval_dataset_type, visible=False
+            )
 
             logging_dir = gr.Textbox(value=default_eval_logging_dir, visible=False)
 
@@ -62,12 +68,13 @@ def build(manager):
                     manager=manager,
                     demo=manager.demo,
                     default_dataset=default_eval_eval_dataset,
-                    )
+                )
             eval_dataset_preview_btn = gr.Button()
-            control.react_preview_dataset_button(manager, eval_dataset_preview_btn, "eval", "eval")
+            control.react_preview_dataset_button(
+                manager, eval_dataset_preview_btn, "eval", "eval"
+            )
 
         with gr.Row():
-
             max_seq_len = gr.Slider(
                 minimum=1024,
                 maximum=131072,
@@ -88,7 +95,6 @@ def build(manager):
             stop_btn = gr.Button(variant="stop")
 
         with gr.Column() as output_container:
-
             command_preview = gr.Code(
                 language="shell",
                 lines=15,
@@ -113,13 +119,21 @@ def build(manager):
     manager.add_elem("eval", "clear_btn", clear_btn)
     manager.add_elem("eval", "eval_dataset_preview_btn", eval_dataset_preview_btn)
     manager.add_elem("eval", "logging_dir", logging_dir, default_eval_logging_dir)
-    manager.add_elem("eval", "eval_dataset_type", eval_dataset_type, default_eval_dataset_type)
-    manager.add_elem("eval", "eval_dataset_path", eval_dataset_path, default_eval_dataset_path)
-    manager.add_elem("eval", "eval_dataset_prob", eval_dataset_prob, default_eval_dataset_prob)
+    manager.add_elem(
+        "eval", "eval_dataset_type", eval_dataset_type, default_eval_dataset_type
+    )
+    manager.add_elem(
+        "eval", "eval_dataset_path", eval_dataset_path, default_eval_dataset_path
+    )
+    manager.add_elem(
+        "eval", "eval_dataset_prob", eval_dataset_prob, default_eval_dataset_prob
+    )
 
-    manager.add_elem("eval", "eval_dataset_group", eval_dataset_elem['output'])
-    manager.add_elem("eval", "eval_dataset_save_btn", eval_dataset_elem['save_dataset_btn'])
-    manager.add_elem("eval", "eval_dataset_btn", eval_dataset_elem['dataset_btn'])
+    manager.add_elem("eval", "eval_dataset_group", eval_dataset_elem["output"])
+    manager.add_elem(
+        "eval", "eval_dataset_save_btn", eval_dataset_elem["save_dataset_btn"]
+    )
+    manager.add_elem("eval", "eval_dataset_btn", eval_dataset_elem["dataset_btn"])
 
     manager.add_elem("eval", "max_seq_len", max_seq_len, default_eval_max_seq_len)
     manager.add_elem("eval", "batch_size", batch_size, default_eval_batch_size)

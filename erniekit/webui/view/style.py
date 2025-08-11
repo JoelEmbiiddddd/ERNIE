@@ -14,7 +14,7 @@
 
 """
 
-Customize CSS styles to achieve the floating effect of the modal box.
+Customize CSS styles to achieve the floating effect of the modal box..
 
 """
 
