@@ -15,9 +15,11 @@
 """
 The startup interface of ErnieKit WebUI.
 """
+
 import resource
 import sys
 from pathlib import Path
+
 import gradio as gr
 
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -29,6 +31,7 @@ from common import config  # noqa: E402
 from manager import manager  # noqa: E402
 from view import basic, chat, eval, export, train  # noqa: E402
 from view.style import CSS, html_log  # noqa: E402
+
 
 def create_ui():
     with gr.Blocks(title="ErnieKit WebUI", theme=gr.themes.Ocean()) as demo:

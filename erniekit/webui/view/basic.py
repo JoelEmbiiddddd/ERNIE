@@ -24,6 +24,7 @@ project_root = current_file.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import gradio as gr  # noqa: E402
+
 from erniekit.webui import control  # noqa: E402
 from erniekit.webui.common import config  # noqa: E402
 
