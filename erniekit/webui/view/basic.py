@@ -19,14 +19,13 @@ Basic component
 import sys
 from pathlib import Path
 
-import gradio as gr
-
-from erniekit.webui import control
-from erniekit.webui.common import config
-
 current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
+
+import gradio as gr  # noqa: E402
+from erniekit.webui import control  # noqa: E402
+from erniekit.webui.common import config  # noqa: E402
 
 
 def build(manager):
