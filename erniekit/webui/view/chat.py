@@ -27,7 +27,7 @@ def build(manager):
     """
     Chat component
     Args:
-        manager (object): An object for unified management of components.
+        manager (object): An object for unified management of components
     """
 
     default_port = config.get_default_user_dict("chat", "port")

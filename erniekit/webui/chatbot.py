@@ -58,7 +58,7 @@ class ChatBotGenerator:
 
     def create_openai_client(self, port):
         """
-        Create an OpenAI client connection
+        Create an OpenAI client connection.
 
         Args:
             self (object): Instance of the class

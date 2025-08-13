@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-The startup interface of ErnieKit WebUI.
+The startup interface of ErnieKit WebUI
 """
 
 import resource

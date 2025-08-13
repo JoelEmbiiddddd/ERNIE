@@ -62,7 +62,7 @@ def basic_reaction(manager):
 
 def eval_reaction(manager, runner, module):
     """
-    Perform eval configuration reactions for model setup.
+    Perform eval configuration reactions for model setup
 
     Args:
         manager (manager): Configuration manager for component values

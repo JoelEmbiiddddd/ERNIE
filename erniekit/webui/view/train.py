@@ -27,7 +27,7 @@ def build(manager):
     """
     Train component
     Args:
-        manager (object): An object for unified management of components.
+        manager (object): An object for unified management of components
     """
 
     default_train_train_dataset_path = config.get_default_user_dict(

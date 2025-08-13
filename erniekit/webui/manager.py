@@ -232,7 +232,7 @@ class Manager:
 
     def setup_language_switching(self, language, demo, alert):
         """
-        Configure language switching event handlers and initial state
+        Configure language switching event handlers and initial state.
 
         Args:
             self: Instance reference
@@ -432,9 +432,9 @@ class Manager:
                 ),
             ):
                 elem.change(
-                    fn=lambda value,
-                    mid=module_id,
-                    eid=elem_id: self._update_component_value(mid, eid, value),
+                    fn=lambda value, mid=module_id, eid=elem_id: self._update_component_value(
+                        mid, eid, value
+                    ),
                     inputs=[elem],
                     outputs=[],
                 )

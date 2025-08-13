@@ -160,7 +160,7 @@ class ConfigManager:
 
     def _init_user_dict(self):
         """
-        Load user configuration from YAML file
+        Load user configuration from YAML file.
 
         Args:
             self (object): Instance of the class
