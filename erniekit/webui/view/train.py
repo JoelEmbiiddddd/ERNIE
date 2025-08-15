@@ -27,7 +27,7 @@ def build(manager):
     """
     Train component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_train_train_dataset_path = config.get_default_user_dict(
@@ -109,6 +109,20 @@ def build(manager):
     default_train_eval_dataset_type = config.get_default_user_dict(
         "train", "eval_dataset_type"
     )
+    default_train_modality_ratio = config.get_default_user_dict(
+        "train", "modality_ratio"
+    )
+
+    default_train_text_dataset_path = config.get_default_user_dict(
+        "train", "text_dataset_path"
+    )
+    default_train_text_dataset_prob = config.get_default_user_dict(
+        "train", "text_dataset_prob"
+    )
+    default_train_text_dataset_type = config.get_default_user_dict(
+        "train", "text_dataset_type"
+    )
+    default_train_text_dataset = config.get_default_user_dict("train", "text_dataset")
 
     with gr.Tab() as train_tab:
         with gr.Row():
@@ -170,7 +184,7 @@ def build(manager):
                 step=1,
             )
 
-        with gr.Row():
+        with gr.Row() as train_train_dataset_row:
             train_dataset_path = gr.Textbox(
                 visible=False,
                 value=default_train_train_dataset_path,
@@ -199,7 +213,7 @@ def build(manager):
                     manager, train_dataset_preview_btn, "train", "train"
                 )
 
-        with gr.Row():
+        with gr.Row() as train_eval_dataset_row:
             eval_dataset_path = gr.Textbox(
                 visible=False,
                 value=default_train_eval_dataset_path,
@@ -225,6 +239,41 @@ def build(manager):
                 control.react_preview_dataset_button(
                     manager, eval_dataset_preview_btn, "train", "eval"
                 )
+
+        with gr.Row() as train_text_dataset_row:
+            text_dataset_path = gr.Textbox(
+                visible=False,
+                value=default_train_text_dataset_path,
+            )
+
+            text_dataset_prob = gr.Textbox(
+                visible=False,
+                value=default_train_text_dataset_prob,
+            )
+
+            text_dataset_type = gr.Textbox(
+                visible=False,
+                value=default_train_text_dataset_type,
+            )
+            with gr.Column():
+                text_dataset_elem = control.create_dynamic_form_component(
+                    manager=manager,
+                    demo=manager.demo,
+                    default_dataset=default_train_text_dataset,
+                )
+            with gr.Column():
+                text_dataset_preview_btn = gr.Button()
+                control.react_preview_dataset_button(
+                    manager, text_dataset_preview_btn, "train", "text"
+                )
+
+        modality_ratio = gr.Slider(
+            minimum=0,
+            maximum=10,
+            visible=False,
+            step=1,
+            value=default_train_modality_ratio,
+        )
 
         with gr.Accordion(open=False) as dataloader_parameters_tab:
             with gr.Row():
@@ -522,6 +571,29 @@ def build(manager):
     manager.add_elem("train", "progress_display", progress_display)
     manager.add_elem("train", "train_loss_plot", train_loss_plot)
     manager.add_elem("train", "output_plot_column", output_plot_column)
+    manager.add_elem(
+        "train", "modality_ratio", modality_ratio, default_train_modality_ratio
+    )
+
+    manager.add_elem(
+        "train", "text_dataset_path", text_dataset_path, default_train_text_dataset_path
+    )
+    manager.add_elem(
+        "train", "text_dataset_prob", text_dataset_prob, default_train_text_dataset_prob
+    )
+    manager.add_elem(
+        "train", "text_dataset_type", text_dataset_type, default_train_text_dataset_type
+    )
+    manager.add_elem("train", "text_dataset_preview_btn", text_dataset_preview_btn)
+    manager.add_elem(
+        "train", "text_dataset_save_btn", text_dataset_elem["save_dataset_btn"]
+    )
+    manager.add_elem("train", "text_dataset_btn", text_dataset_elem["dataset_btn"])
+    manager.add_elem("train", "text_dataset_group", text_dataset_elem["output"])
+
+    manager.add_elem("train", "text_dataset_row", train_text_dataset_row)
+    manager.add_elem("train", "eval_dataset_row", train_eval_dataset_row)
+    manager.add_elem("train", "train_dataset_row", train_train_dataset_row)
 
     manager.add_module_dependency(
         source_module_id="basic",
@@ -538,5 +610,11 @@ def build(manager):
             "clean_btn",
             "train_dataset_preview_btn",
         ],
+    )
+    control.train_vl_reaction_simplified(
+        manager,
+        train_dataset_elem["row_components"],
+        eval_dataset_elem["row_components"],
+        text_dataset_elem["row_components"],
     )
     control.train_reaction(manager, CommandRunner(), "train")

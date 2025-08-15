@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import gradio as gr
+import logging
 
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 webui_dir = Path(__file__).parent
@@ -31,6 +32,8 @@ from common import config  # noqa: E402
 from manager import manager  # noqa: E402
 from view import basic, chat, eval, export, train  # noqa: E402
 from view.style import CSS, html_log  # noqa: E402
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def create_ui():

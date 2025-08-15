@@ -27,7 +27,7 @@ def build(manager):
     """
     Chat component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_port = config.get_default_user_dict("chat", "port")
@@ -94,26 +94,34 @@ def build(manager):
                 )
 
             with gr.Column(scale=2):
-                max_new_tokens = gr.Slider(
-                    minimum=1024,
-                    maximum=131072,
-                    value=default_max_new_tokens,
-                    step=1,
-                )
+                with gr.Column():
+                    max_new_tokens = gr.Slider(
+                        minimum=1024,
+                        maximum=131072,
+                        value=default_max_new_tokens,
+                        step=1,
+                    )
 
-                top_p = gr.Slider(
-                    minimum=0.01,
-                    maximum=1.0,
-                    value=default_top_p,
-                    step=0.01,
-                )
+                    top_p = gr.Slider(
+                        minimum=0.01,
+                        maximum=1.0,
+                        value=default_top_p,
+                        step=0.01,
+                    )
 
-                temperature = gr.Slider(
-                    minimum=0.01,
-                    maximum=1.5,
-                    value=default_temperature,
-                    step=0.01,
-                )
+                    temperature = gr.Slider(
+                        minimum=0.01,
+                        maximum=1.5,
+                        value=default_temperature,
+                        step=0.01,
+                    )
+
+                with gr.Column():
+                    vl_thought_checkbox = gr.Checkbox(
+                        label="开启多模思考模式",
+                        visible=False,
+                        elem_classes="large-checkbox",
+                    )
 
                 submit_btn = gr.Button()
 
@@ -127,11 +135,16 @@ def build(manager):
                     lines=3,
                     show_copy_button=True,
                 )
+                file_input = gr.File(
+                    file_count="multiple",
+                    file_types=config.get_file_type(),
+                    visible=False,
+                    elem_classes="custom-file-input",
+                )
             with gr.Row():
                 role_setting = gr.Textbox(
                     lines=2,
                 )
-
                 system_prompt = gr.Textbox(lines=2)
 
         with gr.Column():
@@ -161,6 +174,8 @@ def build(manager):
     manager.add_elem("chat", "temperature", temperature, default_temperature)
     manager.add_elem("chat", "role_setting", role_setting, default_role_setting)
     manager.add_elem("chat", "system_prompt", system_prompt, default_system_prompt)
+    manager.add_elem("chat", "file_input", file_input)
+    manager.add_elem("chat", "vl_thought_checkbox", vl_thought_checkbox, False)
 
     manager.add_elem("chat", "chat_tab", chat_tab)
     control.chat_reaction(manager, CommandRunner())

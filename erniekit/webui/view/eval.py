@@ -27,7 +27,7 @@ def build(manager):
     """
     Eval component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_eval_dataset_path = config.get_default_user_dict(

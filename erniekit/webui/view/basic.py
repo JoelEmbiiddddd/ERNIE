@@ -33,7 +33,7 @@ def build(manager):
     """
     Basic component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_basic_language = config.get_default_user_dict("basic", "language")
@@ -74,6 +74,12 @@ def build(manager):
     default_basic_lora_plus_scale = config.get_default_user_dict(
         "basic", "lora_plus_scale"
     )
+    default_basic_pp_need_data_degree = config.get_default_user_dict(
+        "basic", "pp_need_data_degree"
+    )
+    default_basic_virtual_pp_degree = config.get_default_user_dict(
+        "basic", "virtual_pp_degree"
+    )
     default_basic_rslora = str(config.get_default_user_dict("basic", "rslora"))
 
     with gr.Row(elem_classes="basic-info-row"):
@@ -86,7 +92,6 @@ def build(manager):
         model_name = gr.Dropdown(
             choices=config.get_choices_kwargs("model_name"),
             value=default_basic_model_name,
-            interactive=False,
             scale=2,
         )
 
@@ -188,6 +193,14 @@ def build(manager):
                 choices=config.get_choices_kwargs("moe_group"),
                 value=default_basic_moe_group,
             )
+        with gr.Row():
+            pp_need_data_degree = gr.Number(
+                value=default_basic_pp_need_data_degree, visible=False
+            )
+
+            virtual_pp_degree = gr.Number(
+                value=default_basic_virtual_pp_degree, visible=False
+            )
 
     manager.add_elem("basic", "language", language, default_basic_language)
     manager.add_elem("basic", "model_name", model_name, default_basic_model_name)
@@ -254,6 +267,15 @@ def build(manager):
     )
     manager.add_elem("basic", "rslora", rslora, default_basic_rslora)
     manager.add_elem("basic", "gpu_num", gpu_num)
+    manager.add_elem(
+        "basic", "virtual_pp_degree", virtual_pp_degree, default_basic_virtual_pp_degree
+    )
+    manager.add_elem(
+        "basic",
+        "pp_need_data_degree",
+        pp_need_data_degree,
+        default_basic_pp_need_data_degree,
+    )
 
     manager.add_module_dependency(
         source_module_id="basic",

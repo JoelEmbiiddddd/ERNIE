@@ -217,6 +217,9 @@ class Manager:
             elif isinstance(elem, gr.HTML):
                 if "value" in lang_config:
                     update_kwargs["value"] = lang_config["value"]
+            elif isinstance(elem, gr.File):
+                if "label" in lang_config:
+                    update_kwargs["label"] = lang_config["label"]
             else:
                 if "label" in lang_config:
                     update_kwargs["label"] = lang_config["label"]
@@ -232,7 +235,7 @@ class Manager:
 
     def setup_language_switching(self, language, demo, alert):
         """
-        Configure language switching event handlers and initial state.
+        Configure language switching event handlers and initial state
 
         Args:
             self: Instance reference
@@ -258,6 +261,7 @@ class Manager:
                     gr.Chatbot,
                     gr.Button,
                     gr.HTML,
+                    gr.File,
                 ),
             )
         ]
@@ -429,6 +433,7 @@ class Manager:
                     gr.Number,
                     gr.HTML,
                     gr.State,
+                    gr.File,
                 ),
             ):
                 elem.change(
@@ -458,6 +463,8 @@ class Manager:
                     elif isinstance(elem, gr.HTML):
                         elem.value = initial_value
                     elif isinstance(elem, gr.State):
+                        elem.value = initial_value
+                    elif isinstance(elem, gr.File):
                         elem.value = initial_value
 
     def _update_component_value(self, module_id, elem_id, value):

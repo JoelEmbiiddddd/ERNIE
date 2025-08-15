@@ -58,11 +58,12 @@ def basic_reaction(manager):
     """
     setup_model_name_or_path_update(manager)
     update_compute_type_by_fine_tuning(manager)
+    basic_vl_reaction_by_model_name(manager)
 
 
 def eval_reaction(manager, runner, module):
     """
-    Perform eval configuration reactions for model setup
+    Perform eval configuration reactions for model setup.
 
     Args:
         manager (manager): Configuration manager for component values
@@ -87,6 +88,7 @@ def export_reaction(manager, runner, module):
 
     """
     setup_command_buttons(manager, runner, module)
+    hide_export_and_eval_tab(manager)
 
 
 def chat_reaction(manager, runner):
@@ -104,6 +106,7 @@ def chat_reaction(manager, runner):
     chat_status_button_handler(manager, CommandRunner())
     chat_update_max_new_len_max(manager)
     chat_role_setting_system_prompt_handler(manager)
+    chat_vlm_reaction(manager)
 
 
 def train_reaction(manager, runner, module):
@@ -123,7 +126,174 @@ def train_reaction(manager, runner, module):
     setup_save_dataset_btn_update(manager, module, "train")
     handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
+    handle_dataset_preview(manager, module, "text")
+    setup_save_dataset_btn_update(manager, module, "text")
     train_plot_and_progress_reaction(manager, runner)
+    train_dataset_row_show_up(manager)
+
+
+def train_dataset_row_show_up(manager):
+    model_name = manager.get_elem_by_id("basic", "model_name")
+    modality_ratio = manager.get_elem_by_id("train", "modality_ratio")
+    text_dataset_row = manager.get_elem_by_id("train", "text_dataset_row")
+    eval_dataset_row = manager.get_elem_by_id("train", "eval_dataset_row")
+
+    def update_dataset_row_show_up(model_name_value):
+        if config.is_vl_models(model_name_value):
+            return (
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=True),
+            )
+        else:
+            return (
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(visible=False),
+            )
+
+    manager.demo.load(
+        fn=update_dataset_row_show_up,
+        inputs=[model_name],
+        outputs=[modality_ratio, eval_dataset_row, text_dataset_row],
+    )
+    model_name.change(
+        fn=update_dataset_row_show_up,
+        inputs=[model_name],
+        outputs=[modality_ratio, eval_dataset_row, text_dataset_row],
+    )
+
+
+def hide_export_and_eval_tab(manager):
+    export_tab = manager.get_elem_by_id("export", "export_tab")
+    eval_tab = manager.get_elem_by_id("eval", "eval_tab")
+    model_name = manager.get_elem_by_id("basic", "model_name")
+
+    def hide_tab_by_model_name(model_name_value):
+
+        if config.is_vl_models(model_name_value):
+            return gr.update(visible=False), gr.update(visible=False)
+        else:
+            return gr.update(visible=True), gr.update(visible=True)
+
+    model_name.change(
+        fn=hide_tab_by_model_name, inputs=model_name, outputs=[export_tab, eval_tab]
+    )
+
+
+def train_vl_reaction_simplified(
+    manager, train_row_components, eval_row_components, text_row_components
+):
+    """
+    简化版本，直接传入row_components参数
+    """
+    model_name = manager.get_elem_by_id("basic", "model_name")
+
+    def train_vl_reaction_handler(model_name_value):
+        is_vl_model = config.is_vl_models(model_name_value)
+
+        type_dropdown_updates = []
+
+        for row in train_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(gr.update(interactive=not is_vl_model))
+
+        for row in eval_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(
+                    gr.update(interactive=not is_vl_model, value="erniekit")
+                )
+
+        for row in text_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(
+                    gr.update(interactive=not is_vl_model, value="erniekit")
+                )
+
+        return type_dropdown_updates
+
+    # 收集所有type dropdown组件
+    type_dropdown_outputs = []
+    for row in train_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+    for row in eval_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+    for row in text_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+
+    # 绑定事件
+    manager.demo.load(
+        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
+    )
+    model_name.change(
+        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
+    )
+
+
+def basic_vl_reaction_by_model_name(manager):
+    model_name = manager.get_elem_by_id("basic", "model_name")
+    fine_tuning = manager.get_elem_by_id("basic", "fine_tuning")
+    compute_type = manager.get_elem_by_id("basic", "compute_type")
+    virtual_pp_degree = manager.get_elem_by_id("basic", "virtual_pp_degree")
+    pp_need_data_degree = manager.get_elem_by_id("basic", "pp_need_data_degree")
+
+    def update_basic_vl_components(model_name_value):
+
+        if config.is_vl_models(model_name_value):
+            return (
+                gr.update(interactive=False, value="Full"),
+                gr.update(interactive=False, value="bf16"),
+                gr.update(visible=True),
+                gr.update(visible=True),
+            )
+
+        return (
+            gr.update(interactive=True),
+            gr.update(interactive=True),
+            gr.update(visible=False),
+            gr.update(visible=False),
+        )
+
+    model_name.change(
+        fn=update_basic_vl_components,
+        inputs=model_name,
+        outputs=[fine_tuning, compute_type, virtual_pp_degree, pp_need_data_degree],
+    )
+
+
+def chat_vlm_reaction(manager):
+    chat_input = manager.get_elem_by_id("chat", "chat_input")
+    file_input = manager.get_elem_by_id("chat", "file_input")
+    model_name = manager.get_elem_by_id("basic", "model_name")
+    language = manager.get_elem_by_id("basic", "language")
+    vl_thought_checkbox = manager.get_elem_by_id("chat", "vl_thought_checkbox")
+
+    def toggle_layout(model_name_value):
+        if config.is_vl_models(model_name_value):
+            time.sleep(0.1)
+            return gr.update(lines=13), gr.update(visible=True), gr.update(visible=True)
+        return gr.update(lines=3), gr.update(visible=False), gr.update(visible=False)
+
+    model_name.change(
+        fn=toggle_layout,
+        inputs=model_name,
+        outputs=[chat_input, file_input, vl_thought_checkbox],
+    )
+
+    language.change(
+        fn=toggle_layout,
+        inputs=model_name,
+        outputs=[chat_input, file_input, vl_thought_checkbox],
+    )
+
+    manager.demo.load(
+        fn=toggle_layout,
+        inputs=model_name,
+        outputs=[chat_input, file_input, vl_thought_checkbox],
+    )
 
 
 def train_plot_and_progress_reaction(manager, runner):
@@ -690,7 +860,7 @@ def setup_model_name_or_path_update(manager):
         if selected_model == "Customization":
             gr.Info(alert.get("custom_model_notice", "info"))
             return (
-                gr.update(interactive=True, value=""),
+                gr.update(value=""),
                 gr.update(
                     value="Local",
                     choices=config.get_choices_kwargs("model_source_custom"),
@@ -741,10 +911,15 @@ def update_compute_type_by_fine_tuning(manager):
 
     fine_tuning = manager.get_elem_by_id("basic", "fine_tuning")
     compute_type = manager.get_elem_by_id("basic", "compute_type")
+    model_name = manager.get_elem_by_id("basic", "model_name")
 
     last_update_time = [0]
 
-    def update_choices(fine_tuning_value):
+    def update_choices(fine_tuning_value, model_name_value):
+
+        if config.is_vl_models(model_name_value):
+            return gr.update()
+
         current_time = time.time()
         last_update_time[0] = current_time
 
@@ -768,7 +943,9 @@ def update_compute_type_by_fine_tuning(manager):
         if compute_type_value == "fp8":
             gr.Warning(alert.get("compute_type_fp8_notice", "warning"))
 
-    fine_tuning.change(fn=update_choices, inputs=[fine_tuning], outputs=[compute_type])
+    fine_tuning.change(
+        fn=update_choices, inputs=[fine_tuning, model_name], outputs=[compute_type]
+    )
     compute_type.change(fn=alert_compute_type_fp8, inputs=[compute_type], outputs=[])
 
 
@@ -1010,6 +1187,8 @@ def handle_dataset_preview(manager, module, elem_type):
 
     def init_dataset_path():
         user_config = config.get_default_user_dict(module, f"{elem_type}_dataset")
+        if user_config is None or len(user_config) == 0:
+            return gr.update()
         dataset_info = config.get_dataset_info()
 
         path = []
@@ -1252,25 +1431,26 @@ def fix_component_value(component, value):
 
 def setup_update_stage(manager):
     """
-    Configure the update process lifecycle stages.
+    Configure the update process components value.
 
     Args:
         manager (object): Manager for update process coordination
     """
     best_config_elem = manager.get_elem_by_id("basic", "best_config")
+    model_name = manager.get_elem_by_id("basic", "model_name")
 
-    train_componet_elem_list = manager.get_dependencies("basic.best_config.train")
-    basic_componet_elem_list = manager.get_dependencies("basic.best_config.basic")
+    train_component_elem_list = manager.get_dependencies("basic.best_config.train")
+    basic_component_elem_list = manager.get_dependencies("basic.best_config.basic")
     train_components = []
     basic_components = []
 
-    for full_id in train_componet_elem_list["dependent_ids"]:
+    for full_id in train_component_elem_list["dependent_ids"]:
         if full_id.startswith("train."):
             elem_id = full_id[len("train") + 1 :]
             component = manager.get_elem_by_id("train", elem_id)
             train_components.append((full_id, component))
 
-    for full_id in basic_componet_elem_list["dependent_ids"]:
+    for full_id in basic_component_elem_list["dependent_ids"]:
         if full_id.startswith("basic."):
             elem_id = full_id[len("basic") + 1 :]
             component = manager.get_elem_by_id("basic", elem_id)
@@ -1292,10 +1472,23 @@ def setup_update_stage(manager):
 
         return output_list
 
+    def on_component_value_change_by_vl_model_name(model_name):
+        if config.is_vl_models(model_name):
+            component_value_list = on_component_value_change("SFT")
+            return component_value_list + [gr.update(interactive=False, value="SFT")]
+
+        return [gr.update() for _ in all_components] + [gr.update(interactive=True)]
+
     best_config_elem.change(
         fn=on_component_value_change,
         inputs=[best_config_elem],
         outputs=[component for _, component in all_components],
+    )
+
+    model_name.change(
+        fn=on_component_value_change_by_vl_model_name,
+        inputs=[model_name],
+        outputs=[component for _, component in all_components] + [best_config_elem],
     )
 
 
@@ -1332,33 +1525,19 @@ def setup_chatbot_response(manager):
         model_name,
     ):
         update_config_yaml(manager, "chat_yaml_path", "chat")
-
-        use_thought_model = chat_generator.check_thought_model(model_name=model_name)
-
-        if use_thought_model:
-            async for result in chat_generator.thought_response(
-                message,
-                history,
-                role,
-                system_prompt,
-                max_new_tokens,
-                top_p,
-                temperature,
-                port,
-            ):
-                yield result
-        else:
-            async for result in chat_generator.mm_response(
-                message,
-                history,
-                role,
-                system_prompt,
-                max_new_tokens,
-                top_p,
-                temperature,
-                port,
-            ):
-                yield result
+        async for result in chat_generator.generate_response(
+            message=message,
+            history=history,
+            model_name=model_name,
+            enable_thought="False",
+            role_setting=role,
+            system_prompt=system_prompt,
+            max_length=max_new_tokens,
+            top_p=top_p,
+            temperature=temperature,
+            port=port,
+        ):
+            yield result
 
     def on_stop():
         chat_generator.stop()
@@ -1590,6 +1769,17 @@ def update_config_yaml(manager, execute_path, module, is_preview=False):
             "eval_dataset_preview_btn",
             "train_dataset_preview_btn",
             "progress_display",
+            "eval_dataset_row",
+            "open_close_plot_btn",
+            "output_plot_column",
+            "progress_display",
+            "text_dataset_btn",
+            "text_dataset_group",
+            "text_dataset_preview_btn",
+            "text_dataset_row",
+            "text_dataset_save_btn",
+            "train_dataset_row",
+            "train_loss_plot",
         ],
         is_preview,
     )
@@ -2038,6 +2228,7 @@ def create_dynamic_form_component(
 
     return {
         "output": output_textbox,
+        "row_components": row_components,
         "save_dataset_btn": save_dataset_btn,
         "dataset_btn": dataset_btn,
     }

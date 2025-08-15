@@ -37,9 +37,11 @@ train_sft:
   ### data
   train_dataset: ['demo_sft_train']
   eval_dataset: ['demo_sft_eval']
+  text_dataset: ['demo_sft_train']
   max_seq_len: 8192
   num_samples_each_epoch: 6000000
   max_prompt_len: 2048
+  modality_ratio: 0
   ### model
   lora_rank: 32
   lora_alpha: -1
@@ -82,9 +84,11 @@ train_dpo:
   ### data
   train_dataset: ['demo_dpo_train']
   eval_dataset: ['demo_dpo_eval']
+  text_dataset: [ 'demo_sft_train' ]
   max_seq_len: 8192
   num_samples_each_epoch: 6000000
   max_prompt_len: 2048
+  modality_ratio: 0
   ### model
   lora_rank: 32
   lora_alpha: 128

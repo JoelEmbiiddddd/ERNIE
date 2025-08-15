@@ -47,7 +47,7 @@ class CommandRunner:
 
     async def execute(self, command: str):
         """
-        Asynchronously execute a shell command and stream its output
+        Asynchronously execute a shell command and stream its output.
 
         Args:
             self: Instance reference

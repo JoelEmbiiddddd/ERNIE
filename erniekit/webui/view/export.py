@@ -27,7 +27,7 @@ def build(manager):
     """
     Export component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_max_shard_size = config.get_default_user_dict("export", "max_shard_size")

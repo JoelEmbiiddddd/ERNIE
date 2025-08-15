@@ -527,7 +527,7 @@ LOCALES = {
             "value": "预览训练数据集",
         },
         "en": {
-            "value": "Preview train dataset",
+            "value": "Preview Train Dataset",
         },
     },
     "preview_command_btn": {
@@ -535,7 +535,7 @@ LOCALES = {
             "value": "预览命令行",
         },
         "en": {
-            "value": "Preview command",
+            "value": "Preview Command",
         },
     },
     "start_btn": {
@@ -740,6 +740,14 @@ LOCALES = {
             "value": "Setting Train Dataset",
         },
     },
+    "text_dataset_btn": {
+        "zh": {
+            "value": "设置文本数据集",
+        },
+        "en": {
+            "value": "Setting Text Dataset",
+        },
+    },
     "add_dataset_btn": {
         "zh": {
             "value": "添加数据集",
@@ -772,6 +780,14 @@ LOCALES = {
             "value": "Preview Eval Dataset",
         },
     },
+    "text_dataset_preview_btn": {
+        "zh": {
+            "value": "预览文本数据集",
+        },
+        "en": {
+            "value": "Preview Text Dataset",
+        },
+    },
     "dataset": {"zh": {"label": "数据集"}, "en": {"label": "Datasets"}},
     "dataset_type": {
         "zh": {"label": "数据集类型"},
@@ -802,6 +818,44 @@ LOCALES = {
     "open_close_plot_btn": {
         "zh": {"value": "打开/关闭Loss曲线"},
         "en": {"value": "Open/Close Loss Plot"},
+    },
+    "file_input": {
+        "zh": {"label": "点击上传文件或拖拽文件"},
+        "en": {"label": "Click to upload files or drag and drop files"},
+    },
+    "vl_thought_checkbox": {
+        "zh": {
+            "label": "开启多模思考模式",
+        },
+        "en": {
+            "label": "Enable VL Thought Mode",
+        },
+    },
+    "pp_need_data_degree": {
+        "zh": {
+            "label": "pp_need_data_degree",
+        },
+        "en": {
+            "label": "pp_need_data_degree",
+        },
+    },
+    "virtual_pp_degree": {
+        "zh": {
+            "label": "virtual_pp_degree",
+        },
+        "en": {
+            "label": "virtual_pp_degree",
+        },
+    },
+    "modality_ratio": {
+        "zh": {
+            "label": "多模态数据比例",
+            "info": "多模和纯文数据配比的配置项",
+        },
+        "en": {
+            "label": "modality ratio",
+            "info": "Configuration item for multi-modal and pure text data ratio",
+        },
     },
 }
 

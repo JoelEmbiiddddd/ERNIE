@@ -43,6 +43,7 @@ class ConfigManager:
     def __init__(self):
         self.user_dict = {}
         self.paddle_png_path = os.path.join(CONFIG_PATH, "paddle.png")
+        self._model_selector = self._init_model_config()
         self._default_path_config = {
             "default_yaml": os.path.join(CONFIG_PATH, "default.yaml"),
             "dataset_info_json": os.path.join(CONFIG_PATH, "dataset_info.json"),
@@ -67,12 +68,12 @@ class ConfigManager:
         self._execute_yaml_path = self._init_execute_yaml_path()
         self._dataset_info = self._init_dataset_info()
         self._thought_models = ["ERNIE-X1-300B-A47B"]
+        self._vl_models = ["ERNIE-4.5-VL-28B-A3B-Paddle"]
         self._choices_kwargs = {
-            "model_name": [
-                "Customization",
-            ],
-            "model_source_ernie": ["Local"],
-            "model_source_custom": ["Local"],
+            "model_name": self._model_selector["model_name"],
+            "model_source_ernie": self._model_selector["model_source_ernie"],
+            "model_source_custom": self._model_selector["model_source_custom"],
+            "model_path_local": self._model_selector["model_path_local"],
             "fine_tuning": ["LoRA", "Full"],
             "existed_dataset_list": list(self._dataset_info.keys()),
             "stage": ["SFT", "DPO"],
@@ -100,11 +101,39 @@ class ConfigManager:
 
         self._default_dataset_name = "demo_sft_train"
 
+        self._files_type = [
+            "image",
+            "video",
+            "audio",
+            "text",
+            ".pdf",
+            ".docx",
+            ".pptx",
+            ".doc",
+        ]
+
+    def _init_model_config(self):
+        return {
+            "model_name": ["Customization", "ERNIE-4.5-VL-28B-A3B-Paddle"],
+            "model_source_ernie": ["Local"],
+            "model_source_custom": ["Local"],
+            "model_path_local": {
+                "Customization": "",
+                "ERNIE-4.5-VL-28B-A3B-Paddle": "baidu/ERNIE-4.5-VL-28B-A3B-Paddle",
+            },
+        }
+
+    def get_file_type(self):
+        return self._files_type
+
     def get_init_dataset_elem(self):
         return self._init_dataset_elem
 
     def get_default_dataset_name(self):
         return self._default_dataset_name
+
+    def is_vl_models(self, model_name):
+        return model_name in self._vl_models
 
     def get_dataset_info(self):
         return self._dataset_info
@@ -160,7 +189,7 @@ class ConfigManager:
 
     def _init_user_dict(self):
         """
-        Load user configuration from YAML file.
+        Load user configuration from YAML file
 
         Args:
             self (object): Instance of the class
@@ -220,7 +249,7 @@ class ConfigManager:
         Returns:
             _type_: _description_
         """
-        return self._choices_kwargs["model_name_or_path" + "_" + model_source].get(
+        return self._choices_kwargs["model_path" + "_" + model_source.lower()].get(
             model_name
         )
 
@@ -611,7 +640,9 @@ def merge_dict_to_yaml(
         merged_dict = {key: merged_dict.get(key, {}) for key in first_level_keys}
         merged_dict = update_dataset_paths(merged_dict, manager, is_preview)
 
-    flattened_dict = flatten_dict(merged_dict, exclude_keys=exclude_keys)
+    flattened_dict = special_handling_from_config_dict(
+        flatten_dict(merged_dict, exclude_keys=exclude_keys)
+    )
 
     for key, value in flattened_dict.items():
         parsed_value = parse_string_to_list(value)
@@ -672,6 +703,15 @@ def is_numeric_string(s):
         return True
     except ValueError:
         return False
+
+
+def special_handling_from_config_dict(config_dict):
+
+    if "modality_ratio" not in config_dict:
+        config_dict["modality_ratio"] = 0
+
+    config_dict["modality_ratio"] = [0, config_dict["modality_ratio"]]
+    return config_dict
 
 
 def deep_merge(source, destination):

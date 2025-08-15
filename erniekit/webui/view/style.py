@@ -14,7 +14,8 @@
 
 """
 
-Customize CSS styles to achieve the floating effect of the modal box.
+Customize CSS styles to achieve the floating effect of the modal box..
+
 """
 
 CSS = """
@@ -210,6 +211,28 @@ CSS = """
 
 .close-btn-1:hover {
     background: #c82333 !important;
+}
+
+.custom-file-input {
+    height: 330px !important;
+    min-height: 330px !important;
+    position: relative !important;
+}
+
+.custom-file-input button svg  {
+    color: black;
+}
+.custom-file-input button > div  {
+    color: transparent !important;
+}
+.custom-file-input button > div span.or  {
+    color: transparent;
+}
+
+.large-checkbox input[type="checkbox"] {
+    width: 30px;
+    height: 30px;
+    margin-right: 5px;
 }
 
 """
