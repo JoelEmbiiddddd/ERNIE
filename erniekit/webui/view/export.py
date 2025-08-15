@@ -51,7 +51,6 @@ def build(manager):
             stop_btn = gr.Button(variant="stop")
 
         with gr.Column() as output_container:
-
             command_preview = gr.Code(
                 language="shell",
                 lines=15,

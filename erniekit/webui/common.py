@@ -16,7 +16,6 @@
 Configuration, general method handling
 """
 
-
 import ast
 import base64
 import copy
@@ -41,7 +40,6 @@ EXECUTE_PATH = os.path.join(CONFIG_PATH, "execute")
 
 
 class ConfigManager:
-
     def __init__(self):
         self.user_dict = {}
         self.paddle_png_path = os.path.join(CONFIG_PATH, "paddle.png")
@@ -89,6 +87,28 @@ class ConfigManager:
             "strategy": ["epoch", "steps"],
         }
 
+        self._init_dataset_elem = [
+            {
+                "type": "dropdown",
+                "options": list(self._dataset_info.keys()) + ["Customization"],
+                "scale": 3,
+            },
+            {"type": "dropdown", "options": ["alpaca", "file", "erniekit"], "scale": 2},
+            {"type": "textbox", "scale": 7},
+            {"type": "textbox", "scale": 2},
+        ]
+
+        self._default_dataset_name = "demo_sft_train"
+
+    def get_init_dataset_elem(self):
+        return self._init_dataset_elem
+
+    def get_default_dataset_name(self):
+        return self._default_dataset_name
+
+    def get_dataset_info(self):
+        return self._dataset_info
+
     def get_compute_type_by_fine_tuning(self, fine_tuning):
         """
         Determine compute type based on fine-tuning configuration
@@ -123,9 +143,24 @@ class ConfigManager:
 
         return result
 
+    def update_user_dict(self, module, value, update_value):
+        """
+        Updates a specified value in the user configuration dictionary with robust error handling.
+
+        Args:
+            module (str): The name of the configuration module.
+            value (str): The name of the configuration item to update.
+            update_value: The new configuration value.
+        """
+
+        if module not in self._user_default_config:
+            return
+        module_config = self._user_default_config[module]
+        module_config[value] = update_value
+
     def _init_user_dict(self):
         """
-        Load user configuration from YAML file
+        Load user configuration from YAML file.
 
         Args:
             self (object): Instance of the class
@@ -185,7 +220,9 @@ class ConfigManager:
         Returns:
             _type_: _description_
         """
-        return self._choices_kwargs["model_name_or_path" + "_" + model_source].get(model_name)
+        return self._choices_kwargs["model_name_or_path" + "_" + model_source].get(
+            model_name
+        )
 
     def get_execute_command(self, name):
         """
@@ -199,12 +236,24 @@ class ConfigManager:
             str: Formatted command string
         """
         execute_command = {
-            "export": self.get_commands_cli("export") + " " + self.get_execute_yaml_path("export_yaml_path"),
-            "split": self.get_commands_cli("split") + " " + self.get_execute_yaml_path("export_yaml_path"),
-            "eval": self.get_commands_cli("eval") + " " + self.get_execute_yaml_path("eval_yaml_path"),
-            "chat": self.get_commands_cli("server") + " " + self.get_execute_yaml_path("chat_yaml_path"),
-            "train_sft": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_sft_yaml_path"),
-            "train_dpo": self.get_commands_cli("train") + " " + self.get_execute_yaml_path("train_dpo_yaml_path"),
+            "export": self.get_commands_cli("export")
+            + " "
+            + self.get_execute_yaml_path("export_yaml_path"),
+            "split": self.get_commands_cli("split")
+            + " "
+            + self.get_execute_yaml_path("export_yaml_path"),
+            "eval": self.get_commands_cli("eval")
+            + " "
+            + self.get_execute_yaml_path("eval_yaml_path"),
+            "chat": self.get_commands_cli("server")
+            + " "
+            + self.get_execute_yaml_path("chat_yaml_path"),
+            "train_sft": self.get_commands_cli("train")
+            + " "
+            + self.get_execute_yaml_path("train_sft_yaml_path"),
+            "train_dpo": self.get_commands_cli("train")
+            + " "
+            + self.get_execute_yaml_path("train_dpo_yaml_path"),
         }
 
         return execute_command.get(name)
@@ -267,11 +316,21 @@ class ConfigManager:
         """
         execute_path_list = self.get_default_dict_module("execute")
         return {
-            "chat_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["chat_yaml_path"]),
-            "export_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["export_yaml_path"]),
-            "eval_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["eval_yaml_path"]),
-            "train_sft_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["train_sft_yaml_path"]),
-            "train_dpo_yaml_path": os.path.join(EXECUTE_PATH, execute_path_list["train_dpo_yaml_path"]),
+            "chat_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["chat_yaml_path"]
+            ),
+            "export_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["export_yaml_path"]
+            ),
+            "eval_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["eval_yaml_path"]
+            ),
+            "train_sft_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["train_sft_yaml_path"]
+            ),
+            "train_dpo_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["train_dpo_yaml_path"]
+            ),
         }
 
     def get_gpu_count(self):
@@ -372,7 +431,7 @@ config = ConfigManager()
 
 def yaml_to_args(yaml_path, erniekit_execute):
     """
-    Read YAML configuration file and convert to command line argument string
+    Read YAML configuration file and convert to command line argument string.
 
     Args:
         yaml_path (str): Path to YAML file
@@ -393,7 +452,7 @@ def yaml_to_args(yaml_path, erniekit_execute):
         if isinstance(value, bool):
             args_list.append(f"{indentation}{arg_name} {str(value).lower()} \\")
         elif isinstance(value, list):
-            list_str = ','.join(map(str, value))
+            list_str = ",".join(map(str, value))
             args_list.append(f'{indentation}{arg_name} "{list_str}" \\')
         elif isinstance(value, str):
             args_list.append(f'{indentation}{arg_name} "{value}" \\')
@@ -401,9 +460,15 @@ def yaml_to_args(yaml_path, erniekit_execute):
             args_list.append(f"{indentation}{arg_name} {value} \\")
 
     if args_list:
-        args_list[-1] = args_list[-1].rstrip(' \\')
+        args_list[-1] = args_list[-1].rstrip(" \\")
 
-    return config.get_cuda_visible_devices() + " " + erniekit_execute + " \\\n" + "\n".join(args_list)
+    return (
+        config.get_cuda_visible_devices()
+        + " "
+        + erniekit_execute
+        + " \\\n"
+        + "\n".join(args_list)
+    )
 
 
 def abort_process(pid: int) -> None:
@@ -488,53 +553,11 @@ def parse_string_to_list(value):
 
     if value.strip().startswith("[") and value.strip().endswith("]"):
         try:
-
             return ast.literal_eval(value)
         except (ValueError, SyntaxError):
             return value
 
     return value
-
-
-def format_list_value(value, is_numeric=False):
-    """
-    Format list values by adding quotes for strings, omitting quotes for numbers,
-    and handling boolean strings specially.
-
-    Args:
-        value: List value to format
-        is_numeric (bool): Whether to force conversion to numeric type
-
-    Returns:
-        str: Formatted string with a marker indicating quotes should be stripped
-    """
-    if not isinstance(value, list):
-        return value
-
-    formatted_items = []
-    for item in value:
-        if is_numeric:
-            try:
-                num_value = float(item)
-                if num_value.is_integer():
-                    formatted_items.append(str(int(num_value)))
-                else:
-                    formatted_items.append(str(num_value))
-            except (ValueError, TypeError):
-                formatted_items.append(f'"{item!s}"')
-        elif isinstance(item, str):
-            if item.lower() == "true":
-                formatted_items.append("True")
-            elif item.lower() == "false":
-                formatted_items.append("False")
-            else:
-                formatted_items.append(f'"{item}"')
-        elif isinstance(item, (int, float)):
-            formatted_items.append(str(item))
-        else:
-            formatted_items.append(f'"{item!s}"')
-
-    return f"__NOQUOTE_START__[{','.join(formatted_items)}]__NOQUOTE_END__"
 
 
 def convert_boolean_strings(value):
@@ -596,12 +619,12 @@ def merge_dict_to_yaml(
             if len(parsed_value) == 1:
                 flattened_dict[key] = str(parsed_value[0])
             else:
-                flattened_dict[key] = ','.join(map(str, parsed_value))
+                flattened_dict[key] = ",".join(map(str, parsed_value))
         else:
             converted_value = convert_boolean_strings(value)
             if isinstance(converted_value, str) and is_numeric_string(converted_value):
                 try:
-                    if '.' in converted_value:
+                    if "." in converted_value:
                         flattened_dict[key] = float(converted_value)
                     else:
                         flattened_dict[key] = int(converted_value)
@@ -619,7 +642,9 @@ def merge_dict_to_yaml(
     yaml_data.update(flattened_dict)
 
     with open(yaml_file_path, "w", encoding="utf-8") as f:
-        yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True, width=1000)
+        yaml.dump(
+            yaml_data, f, default_flow_style=False, allow_unicode=True, width=1000
+        )
 
     with open(yaml_file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -663,7 +688,11 @@ def deep_merge(source, destination):
         dict: Merged dictionary (destination updated in-place and returned)
     """
     for key, value in source.items():
-        if key in destination and isinstance(destination[key], dict) and isinstance(value, dict):
+        if (
+            key in destination
+            and isinstance(destination[key], dict)
+            and isinstance(value, dict)
+        ):
             destination[key] = deep_merge(value, destination[key])
         else:
             destination[key] = value
@@ -682,100 +711,56 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         dict: New configuration dictionary with replaced values
     """
 
-    def merge_values(base, addition, separator=','):
-        if base is None:
-            return addition
-        if addition is None:
-            return base
+    def update_output_dir(manager_input, config_dict_input):
+        if config_dict_input["output_dir_view"]:
+            config_dict_input["output_dir"] = config_dict_input["output_dir_view"]
+        else:
+            config_dict_input["output_dir"] = mkdir_output_dir(
+                manager_input, is_preview
+            )
 
-        base_str = str(base)
-        addition_str = str(addition)
+    def update_logging_dir(config_dict_input, basic_config_input, module):
+        config_dict_input["logging_dir"] = os.path.join(
+            basic_config_input["output_dir"], config.get_path_config("logging_dir")
+        )
+        config.update_user_dict(module, "logging_dir", config_dict_input["logging_dir"])
 
-        if not base_str:
-            return addition_str
-        if not addition_str:
-            return base_str
-
-        return f"{base_str}{separator}{addition_str}"
+    def update_dataset_info(module_config, train_eval_type):
+        dataset_group = module_config[train_eval_type + "_dataset_group"]
+        module_config[train_eval_type + "_dataset_type"] = extract_dataset_and_join(
+            dataset_group, "col1"
+        )
+        module_config[train_eval_type + "_dataset_path"] = extract_dataset_and_join(
+            dataset_group, "col2"
+        )
+        module_config[train_eval_type + "_dataset_prob"] = extract_dataset_and_join(
+            dataset_group, "col3"
+        )
 
     basic_config = config_dict.get("basic", {})
     train_config = config_dict.get("train", {})
+    eval_config = config_dict.get("eval", {})
+    export_config = config_dict.get("export", {})
+    chat_config = config_dict.get("chat", {})
 
     if train_config != {}:
+        update_output_dir(manager, basic_config)
+        update_logging_dir(train_config, basic_config, "train")
+        update_dataset_info(train_config, "train")
+        update_dataset_info(train_config, "eval")
 
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = mkdir_output_dir(manager, is_preview)
-
-        train_config["train_dataset_path"] = merge_values(
-            train_config["train_customize_dataset_path"], train_config["train_existed_dataset_path"]
-        )
-
-        train_config["train_dataset_prob"] = merge_values(
-            train_config["train_customize_dataset_prob"], train_config["train_existed_dataset_prob"]
-        )
-
-        train_config["train_dataset_type"] = merge_values(
-            train_config["train_customize_dataset_type"], train_config["train_existed_dataset_type"]
-        )
-
-        train_config["eval_dataset_path"] = merge_values(
-            train_config["eval_customize_dataset_path"], train_config["eval_existed_dataset_path"]
-        )
-
-        train_config["eval_dataset_prob"] = merge_values(
-            train_config["eval_customize_dataset_prob"], train_config["eval_existed_dataset_prob"]
-        )
-
-        train_config["eval_dataset_type"] = merge_values(
-            train_config["eval_customize_dataset_type"], train_config["eval_existed_dataset_type"]
-        )
-
-        train_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
-
-    eval_config = config_dict.get("eval", {})
     if eval_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        eval_config["eval_dataset_path"] = merge_values(
-            eval_config["eval_customize_dataset_path"], eval_config["eval_existed_dataset_path"]
-        )
-
-        eval_config["eval_dataset_prob"] = merge_values(
-            eval_config["eval_customize_dataset_prob"], eval_config["eval_existed_dataset_prob"]
-        )
-
-        eval_config["eval_dataset_type"] = merge_values(
-            eval_config["eval_customize_dataset_type"], eval_config["eval_existed_dataset_type"]
-        )
-
-        eval_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
-
-    export_config = config_dict.get("export", {})
+        update_output_dir(manager, basic_config)
+        update_logging_dir(eval_config, basic_config, "eval")
+        update_dataset_info(eval_config, "eval")
 
     if export_config != {}:
+        update_output_dir(manager, basic_config)
+        update_logging_dir(export_config, basic_config, "export")
 
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        export_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
-
-    chat_config = config_dict.get("chat", {})
     if chat_config != {}:
-
-        if basic_config["output_dir_view"]:
-            basic_config["output_dir"] = basic_config["output_dir_view"]
-        else:
-            basic_config["output_dir"] = config.get_path_config("output_dir")
-
-        chat_config["logging_dir"] = os.path.join(basic_config["output_dir"], config.get_path_config("logging_dir"))
+        update_output_dir(manager, basic_config)
+        update_logging_dir(chat_config, basic_config, "chat")
 
     if basic_config != {}:
         export_paddle_log(basic_config["output_dir"])
@@ -813,6 +798,25 @@ def mkdir_output_dir(manager, is_preview):
         full_path.mkdir(parents=True, exist_ok=True)
 
     return os.path.join(base_output_dir, dir_name)
+
+
+def extract_dataset_and_join(json_str, col_key):
+    """
+    Extract values from a JSON string based on a specified column key and join them into a single string.
+
+    Args:
+        json_str (str): A JSON string containing dataset information
+        col_key (str): The key of the column to extract from each dataset item
+
+    Returns:
+        str: A comma-separated string of values extracted from the specified column. Returns empty string on failure.
+    """
+    try:
+        json_data = json.loads(json_str)
+        column_values = [str(item.get(col_key, "")) for item in json_data.values()]
+        return ",".join(column_values)
+    except Exception:
+        return ""
 
 
 def export_paddle_log(output_dir):

@@ -13,9 +13,8 @@
 # limitations under the License.
 
 """
-Chatbot, send, terminate, and return the model's dialogue.
+Chatbot, send, terminate, and return the model's dialogue
 """
-
 
 import asyncio
 
@@ -59,7 +58,7 @@ class ChatBotGenerator:
 
     def create_openai_client(self, port):
         """
-        Create an OpenAI client connection
+        Create an OpenAI client connection.
 
         Args:
             self (object): Instance of the class
@@ -69,7 +68,9 @@ class ChatBotGenerator:
         base_url = f"http://{self.default_ip}:{port}/v1"
         return openai.Client(base_url=base_url, api_key="EMPTY_API_KEY")
 
-    async def build_message_history(self, message, history, role_setting, system_prompt):
+    async def build_message_history(
+        self, message, history, role_setting, system_prompt
+    ):
         """
         Build message history and uniformly process different history record formats
 
@@ -223,7 +224,9 @@ class ChatBotGenerator:
         try:
             client = self.create_openai_client(port)
 
-            messages = await self.build_message_history(message, history, role_setting, system_prompt)
+            messages = await self.build_message_history(
+                message, history, role_setting, system_prompt
+            )
 
             response = client.chat.completions.create(
                 model="default",
@@ -250,7 +253,9 @@ class ChatBotGenerator:
                     break
 
                 if chunk.choices[0].delta:
-                    thought_part = getattr(chunk.choices[0].delta, "reasoning_content", "")
+                    thought_part = getattr(
+                        chunk.choices[0].delta, "reasoning_content", ""
+                    )
                     answer_part = getattr(chunk.choices[0].delta, "content", "")
 
                     current_thought += thought_part
@@ -273,7 +278,10 @@ class ChatBotGenerator:
 
         except Exception as e:
             print(f"thought_response error: {e}")
-            error_msg = {"role": "assistant", "content": f"The thinking process generation failed：{e!s}"}
+            error_msg = {
+                "role": "assistant",
+                "content": f"The thinking process generation failed：{e!s}",
+            }
             yield [{"role": "user", "content": message}, error_msg], gr.update(value="")
         finally:
             self.reset()

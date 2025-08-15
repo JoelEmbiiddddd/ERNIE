@@ -27,10 +27,7 @@ chat:
   top_p: 0.7
   temperature: 0.95
 eval:
-  eval_dataset_path: null
-  eval_dataset_prob: null
-  eval_dataset_type: null
-  eval_dataset: ['demo_sft_eval']
+  eval_dataset: ['demo_sft_eval', 'alpaca_zh']
   max_seq_len: 8192
   batch_size: 1
 export:
@@ -38,12 +35,6 @@ export:
   hf_hub_id: null
 train_sft:
   ### data
-  train_dataset_path: null
-  train_dataset_prob: null
-  train_dataset_type: null
-  eval_dataset_path: null
-  eval_dataset_prob: null
-  eval_dataset_type: null
   train_dataset: ['demo_sft_train']
   eval_dataset: ['demo_sft_eval']
   max_seq_len: 8192
@@ -89,12 +80,6 @@ train_sft:
   save_total_limit: 5
 train_dpo:
   ### data
-  train_dataset_path: null
-  train_dataset_prob: null
-  train_dataset_type: null
-  eval_dataset_path: null
-  eval_dataset_prob: null
-  eval_dataset_type: null
   train_dataset: ['demo_dpo_train']
   eval_dataset: ['demo_dpo_eval']
   max_seq_len: 8192
