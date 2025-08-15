@@ -72,7 +72,9 @@ ALERTS = {
             "which exceeds the {} GB limit. Starting the splitting process...",
         }
     },
-    "export_split_fail": {"error": {"zh": "erniekit sever执行失败", "en": "erniekit sever export failed"}},
+    "export_split_fail": {
+        "error": {"zh": "erniekit sever执行失败", "en": "erniekit sever export failed"}
+    },
     "preview_data_non_json": {
         "error": {
             "zh": " 文件 {} 不是有效的JSON/JSONL格式，已跳过",
@@ -152,9 +154,14 @@ ALERTS = {
             "en": "If max steps is greater than 0, the setting of training epochs will not take effect.",
         }
     },
-    "thought_model_notice": {"info": {"zh": "该模型不建议微调", "en": "This model should not be fine-tuned"}},
+    "thought_model_notice": {
+        "info": {"zh": "该模型不建议微调", "en": "This model should not be fine-tuned"}
+    },
     "custom_model_notice": {
-        "info": {"zh": "自定义模型，请自主填入模型路径", "en": "Custom models, please fill in your own model paths"}
+        "info": {
+            "zh": "自定义模型，请自主填入模型路径",
+            "en": "Custom models, please fill in your own model paths",
+        }
     },
     "compute_type_fp8_notice": {
         "warning": {
@@ -162,11 +169,37 @@ ALERTS = {
             "en": "Please note that fp8 only supports GPU environments of H-card type",
         }
     },
+    "dataset_none_data": {
+        "warning": {
+            "zh": "数据集{}: 缺失相关数据({})",
+            "en": "Dataset {}: Missing relevant data ({})",
+        }
+    },
+    "merge_is_running": {
+        "warning": {
+            "zh": "当前merge任务正在进行中，请等待完成或停止后再执行",
+            "en": "Current merge task is being performed, wait until it completes or stop it first",
+        }
+    },
+    "split_is_running": {
+        "warning": {
+            "zh": "当前split任务正在进行中，请等待完成或停止后再执行",
+            "en": "Current split task is being performed, wait until it completes or stop it first",
+        }
+    },
+    "allow_switch_button": {
+        "info": {
+            "zh": "命令成功启动，预览命令行按钮之间切换不影响命令执行",
+            "en": "Command started successfully, switching between preview commands does not affect execution",
+        }
+    },
+    "model_is_None": {
+        "warning": {"zh": "模型路径不能为空", "en": "Model path can not be none"}
+    },
 }
 
 
 class Alerts:
-
     def __init__(self, language="zh"):
         self.language = language
         self.manager = None
@@ -182,7 +215,7 @@ class Alerts:
             lang (str, optional): Language code to override default (default: None)
 
         Returns:
-            str: Localized alert message if found, empty string otherwise
+            str: Localized alert message if found, empty string otherwise.
         """
 
         try:
