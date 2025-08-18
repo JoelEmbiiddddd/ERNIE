@@ -104,13 +104,28 @@ class ConfigManager:
         self._files_type = [
             "image",
             "video",
-            "audio",
-            "text",
-            ".pdf",
-            ".docx",
-            ".pptx",
-            ".doc",
         ]
+
+        self.image_extensions = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".tiff",
+            ".webp",
+            ".svg",
+        }
+        self.video_extensions = {
+            ".mp4",
+            ".avi",
+            ".mov",
+            ".wmv",
+            ".flv",
+            ".mkv",
+            ".webm",
+            ".mpeg",
+        }
 
     def _init_model_config(self):
         return {
@@ -122,6 +137,12 @@ class ConfigManager:
                 "ERNIE-4.5-VL-28B-A3B-Paddle": "baidu/ERNIE-4.5-VL-28B-A3B-Paddle",
             },
         }
+
+    def _is_image_file(self, extension):
+        return extension in self.image_extensions
+
+    def _is_video_file(self, extension):
+        return extension in self.video_extensions
 
     def get_file_type(self):
         return self._files_type

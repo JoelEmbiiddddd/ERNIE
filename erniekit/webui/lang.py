@@ -820,10 +820,10 @@ LOCALES = {
         "en": {"value": "Open/Close Loss Plot"},
     },
     "file_input": {
-        "zh": {"label": "点击上传文件或拖拽文件"},
-        "en": {"label": "Click to upload files or drag and drop files"},
+        "zh": {"label": "点击上传文件"},
+        "en": {"label": "Click to upload files"},
     },
-    "vl_thought_checkbox": {
+    "thought_checkbox": {
         "zh": {
             "label": "开启多模思考模式",
         },

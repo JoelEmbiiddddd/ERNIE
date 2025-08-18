@@ -16,7 +16,6 @@
 Optimized Chatbot architecture supporting text, multimodal, and thought models
 with enhanced debugging capabilities
 """
-
 import asyncio
 import json
 import time
@@ -37,13 +36,16 @@ class ChatRequest:
     """Chat request configuration"""
 
     message: str
+    model_name: str
     history: List[Dict[str, str]]
+    file_input: Optional[List[str]] = None  # Added file input parameter
     role_setting: Optional[str] = None
     system_prompt: Optional[str] = None
     max_length: int = 1000
     top_p: float = 0.8
     temperature: float = 0.7
     port: int = 8188
+    enable_thinking: bool = False  # Added for thought models
 
 
 @dataclass
@@ -116,21 +118,27 @@ class DebugLogger:
         print("\n📥 REQUEST DATA:")
         print("-" * 40)
         print(f"Message: {debug_info.request_data.get('message', 'N/A')}")
+        print(f"File Input: {debug_info.request_data.get('file_input', 'N/A')}")
         print(f"Role Setting: {debug_info.request_data.get('role_setting', 'N/A')}")
         print(f"System Prompt: {debug_info.request_data.get('system_prompt', 'N/A')}")
         print(f"Temperature: {debug_info.request_data.get('temperature', 'N/A')}")
         print(f"Top P: {debug_info.request_data.get('top_p', 'N/A')}")
         print(f"Max Length: {debug_info.request_data.get('max_length', 'N/A')}")
         print(f"Port: {debug_info.request_data.get('port', 'N/A')}")
+        print(
+            f"Enable Thinking: {debug_info.request_data.get('enable_thinking', 'N/A')}"
+        )
 
         print("\n📨 PROCESSED MESSAGES:")
         print("-" * 40)
         for i, msg in enumerate(debug_info.processed_messages):
             role = msg.get("role", "unknown")
-            content = msg.get("content", "")[:200] + (
-                "..." if len(msg.get("content", "")) > 200 else ""
-            )
-            print(f"  {i + 1}. [{role.upper()}]: {content}")
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                content_preview = f"[Multimodal content with {len(content)} parts]"
+            else:
+                content_preview = content[:200] + ("..." if len(content) > 200 else "")
+            print(f"  {i + 1}. [{role.upper()}]: {content_preview}")
 
         if debug_info.thought_content:
             print("\n🤔 THOUGHT PROCESS:")
@@ -207,7 +215,10 @@ class MessageProcessor:
         history: List[Union[Dict, List, Tuple]],
         role_setting: Optional[str] = None,
         system_prompt: Optional[str] = None,
-    ) -> List[Dict[str, str]]:
+        is_multimodal: bool = False,
+        file_input: Optional[List[str]] = None,  # Added file_input parameter
+        chatbot_instance=None,  # Added to access _classifie_file_by_ext method
+    ) -> List[Dict[str, Any]]:
         """
         Build standardized message history from various input formats
 
@@ -216,25 +227,32 @@ class MessageProcessor:
             history: Conversation history in various formats
             role_setting: Role configuration
             system_prompt: System prompt
+            is_multimodal: Whether this is for multimodal model
+            file_input: List of file paths
+            chatbot_instance: ChatBotGenerator instance for file classification
 
         Returns:
             Standardized message list
         """
         messages = []
 
-        # Add system message if provided
         system_content = MessageProcessor._build_system_content(
             role_setting, system_prompt
         )
         if system_content:
             messages.append({"role": "system", "content": system_content})
 
-        # Process history
         if history:
-            messages.extend(MessageProcessor._parse_history(history))
+            messages.extend(MessageProcessor._parse_history(history, is_multimodal))
 
-        # Add current message
-        messages.append({"role": "user", "content": message})
+        if is_multimodal:
+            user_content = MessageProcessor._parse_multimodal_content(
+                message, file_input, chatbot_instance
+            )
+        else:
+            user_content = message
+
+        messages.append({"role": "user", "content": user_content})
         return messages
 
     @staticmethod
@@ -250,27 +268,80 @@ class MessageProcessor:
         return "".join(content_parts)
 
     @staticmethod
-    def _parse_history(history: List[Union[Dict, List, Tuple]]) -> List[Dict[str, str]]:
+    def _parse_history(
+        history: List[Union[Dict, List, Tuple]], is_multimodal: bool = False
+    ) -> List[Dict[str, Any]]:
         """Parse various history formats into standardized format"""
         messages = []
 
         for entry in history:
             if isinstance(entry, dict) and "role" in entry:
-                # Already in correct format
                 role = entry["role"]
                 content = entry.get("content", "")
                 if role in ["user", "assistant"]:
+                    if is_multimodal and role == "user" and isinstance(content, str):
+                        content = MessageProcessor._parse_multimodal_content(content)
                     messages.append({"role": role, "content": content})
             elif isinstance(entry, (list, tuple)) and len(entry) == 2:
-                # Legacy tuple format: (user_message, bot_message)
                 user_msg, bot_msg = entry
-                messages.append({"role": "user", "content": user_msg})
+                user_content = user_msg
+                if is_multimodal:
+                    user_content = MessageProcessor._parse_multimodal_content(user_msg)
+                messages.append({"role": "user", "content": user_content})
                 if bot_msg:
                     messages.append({"role": "assistant", "content": bot_msg})
             else:
                 print(f"Warning: Unresolvable history format: {entry}")
 
         return messages
+
+    @staticmethod
+    def _parse_multimodal_content(
+        message: str, file_input: Optional[List[str]] = None, chatbot_instance=None
+    ) -> Union[str, List[Dict[str, Any]]]:
+        """
+        Parse message for multimodal content (local images, videos) and text
+
+        Args:
+            message: Text message
+            file_input: List of local file paths
+            chatbot_instance: ChatBotGenerator instance for file classification
+
+        Returns:
+            Either text string or list of content dictionaries
+        """
+        content_list = []
+
+        # Process local file inputs if provided
+        if file_input and chatbot_instance:
+            classified_files = chatbot_instance._classifie_file_by_ext(file_input)
+
+            # Add image files
+            for img_path in classified_files.get("image_url", []):
+                content_list.append(
+                    {"type": "image_url", "image_url": {"url": img_path}}
+                )
+
+            # Add video files
+            for vid_path in classified_files.get("video_url", []):
+                content_list.append(
+                    {"type": "video_url", "video_url": {"url": vid_path}}
+                )
+
+        # Add text content if there's any text
+        if message.strip():
+            content_list.append({"type": "text", "text": message.strip()})
+
+        # Return content list if we have multimodal content, otherwise return plain text
+        if (
+            content_list
+            and len(content_list) > 1
+            or (content_list and content_list[0]["type"] != "text")
+        ):
+            return content_list
+
+        # If only text content, return as simple string
+        return message
 
 
 class ResponseFormatter:
@@ -307,23 +378,32 @@ class BaseResponseGenerator(ABC):
 
     @abstractmethod
     async def generate_response(
-        self, request: ChatRequest
+        self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate response for the given request"""
         pass
 
     async def _create_chat_completion(
-        self, client, messages: List[Dict], request: ChatRequest
+        self,
+        client,
+        messages: List[Dict],
+        request: ChatRequest,
+        enable_thinking: bool = False,
     ):
         """Create chat completion with common parameters"""
-        return client.chat.completions.create(
-            model="default",
-            messages=messages,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            max_tokens=request.max_length,
-            stream=True,
-        )
+        completion_params = {
+            "model": request.model_name,
+            "messages": messages,
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "max_tokens": request.max_length,
+            "stream": True,
+        }
+
+        if enable_thinking:
+            completion_params["chat_template_kwargs"] = {"enable_thinking": True}
+
+        return client.chat.completions.create(**completion_params)
 
     def _create_history_with_response(
         self, request: ChatRequest
@@ -360,7 +440,7 @@ class TextResponseGenerator(BaseResponseGenerator):
     """Generator for text-only models"""
 
     async def generate_response(
-        self, request: ChatRequest
+        self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate text response"""
         if not request.message:
@@ -378,7 +458,12 @@ class TextResponseGenerator(BaseResponseGenerator):
                 request.history,
                 request.role_setting,
                 request.system_prompt,
+                is_multimodal=False,
+                file_input=request.file_input,
+                chatbot_instance=chatbot_instance,
             )
+
+            print("messages:", messages)
 
             # Create debug info
             debug_info = self._create_debug_info(request, messages, ModelType.TEXT)
@@ -400,6 +485,8 @@ class TextResponseGenerator(BaseResponseGenerator):
             debug_info.response_content = assistant_response["content"]
             debug_info.generation_time = time.time() - start_time
             debug_info.token_count = token_count
+
+            print("new_history:", new_history)
 
             yield new_history, gr.update(value="")
 
@@ -432,7 +519,7 @@ class MultimodalResponseGenerator(BaseResponseGenerator):
     """Generator for multimodal models"""
 
     async def generate_response(
-        self, request: ChatRequest
+        self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate multimodal response"""
         if not request.message:
@@ -450,6 +537,9 @@ class MultimodalResponseGenerator(BaseResponseGenerator):
                 request.history,
                 request.role_setting,
                 request.system_prompt,
+                is_multimodal=True,
+                file_input=request.file_input,
+                chatbot_instance=chatbot_instance,
             )
 
             # Create debug info
@@ -506,7 +596,7 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
     """Generator for models with thought process"""
 
     async def generate_response(
-        self, request: ChatRequest
+        self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate response with thought process"""
         if not request.message:
@@ -524,12 +614,17 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
                 request.history,
                 request.role_setting,
                 request.system_prompt,
+                is_multimodal=False,
+                file_input=request.file_input,
+                chatbot_instance=chatbot_instance,
             )
 
             # Create debug info
             debug_info = self._create_debug_info(request, messages, ModelType.THOUGHT)
 
-            response = await self._create_chat_completion(client, messages, request)
+            response = await self._create_chat_completion(
+                client, messages, request, enable_thinking=True
+            )
             new_history, assistant_response = self._create_history_with_response(
                 request
             )
@@ -544,10 +639,10 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
 
                 if chunk.choices[0].delta:
                     # Extract thought and response content
-                    thought_part = getattr(
-                        chunk.choices[0].delta, "reasoning_content", ""
+                    thought_part = (
+                        getattr(chunk.choices[0].delta, "reasoning_content", "") or ""
                     )
-                    answer_part = getattr(chunk.choices[0].delta, "content", "")
+                    answer_part = getattr(chunk.choices[0].delta, "content", "") or ""
 
                     current_thought += thought_part
                     current_response += answer_part
@@ -592,7 +687,7 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
     """Generator for multimodal models with thought process"""
 
     async def generate_response(
-        self, request: ChatRequest
+        self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate multimodal response with thought process"""
         if not request.message:
@@ -610,6 +705,9 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                 request.history,
                 request.role_setting,
                 request.system_prompt,
+                is_multimodal=True,
+                file_input=request.file_input,
+                chatbot_instance=chatbot_instance,
             )
 
             # Create debug info
@@ -617,7 +715,9 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                 request, messages, ModelType.MULTIMODAL_THOUGHT
             )
 
-            response = await self._create_chat_completion(client, messages, request)
+            response = await self._create_chat_completion(
+                client, messages, request, enable_thinking=True
+            )
             new_history, assistant_response = self._create_history_with_response(
                 request
             )
@@ -632,10 +732,10 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
 
                 if chunk.choices[0].delta:
                     # Extract thought and response content
-                    thought_part = getattr(
-                        chunk.choices[0].delta, "reasoning_content", ""
+                    thought_part = (
+                        getattr(chunk.choices[0].delta, "reasoning_content", "") or ""
                     )
-                    answer_part = getattr(chunk.choices[0].delta, "content", "")
+                    answer_part = getattr(chunk.choices[0].delta, "content", "") or ""
 
                     current_thought += thought_part
                     current_response += answer_part
@@ -721,6 +821,26 @@ class ChatBotGenerator:
         base_url = f"http://{self.default_ip}:{port}/v1"
         return openai.Client(base_url=base_url, api_key="EMPTY_API_KEY")
 
+    def _classifie_file_by_ext(self, file_input: List) -> Dict:
+        classified = {"image_url": [], "video_url": [], "non_type": []}
+
+        for file_path in file_input:
+            # 获取文件后缀（转为小写以便不区分大小写）
+            ext = ""
+            if "." in file_path:
+                ext = file_path.split(".")[-1].lower()
+                ext = f".{ext}"  # 确保后缀以点开头
+
+            # 根据后缀分类
+            if config._is_image_file(ext):
+                classified["image_url"].append(file_path)
+            elif config._is_video_file(ext):
+                classified["video_url"].append(file_path)
+            else:
+                classified["non_type"].append(file_path)
+
+        return classified
+
     # Debug methods
     def enable_debug(self, session_id: Optional[str] = None):
         """Enable debug mode"""
@@ -758,9 +878,9 @@ class ChatBotGenerator:
         self, model_name: str, enable_thought: bool = False
     ) -> str:
         """Determine model type based on model name and configuration"""
-        is_multimodal = self._is_multimodal_model(model_name)
+        is_multimodal = config.is_vl_models(model_name)
         is_thought_capable = (
-            config.is_thought_model(model_name) if enable_thought else False
+            True if enable_thought else config.is_thought_model(model_name)
         )
 
         if is_multimodal and is_thought_capable:
@@ -771,12 +891,6 @@ class ChatBotGenerator:
             return ModelType.THOUGHT
         else:
             return ModelType.TEXT
-
-    def _is_multimodal_model(self, model_name: str) -> bool:
-        """Check if model supports multimodal input"""
-        # This should be configured based on your actual model capabilities
-        multimodal_keywords = ["vision", "multimodal", "mm", "visual"]
-        return any(keyword in model_name.lower() for keyword in multimodal_keywords)
 
     # Legacy compatibility methods
     async def text_response(
@@ -789,6 +903,7 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
+        file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate text-only response (legacy compatibility)"""
         request = ChatRequest(
@@ -800,10 +915,11 @@ class ChatBotGenerator:
             top_p=top_p,
             temperature=temperature,
             port=port,
+            file_input=file_input,
         )
 
         generator = self.generators[ModelType.TEXT]
-        async for result in generator.generate_response(request):
+        async for result in generator.generate_response(request, self):
             yield result
 
     async def multimodal_response(
@@ -816,6 +932,7 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
+        file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate multimodal response (legacy compatibility)"""
         request = ChatRequest(
@@ -827,10 +944,11 @@ class ChatBotGenerator:
             top_p=top_p,
             temperature=temperature,
             port=port,
+            file_input=file_input,
         )
 
         generator = self.generators[ModelType.MULTIMODAL]
-        async for result in generator.generate_response(request):
+        async for result in generator.generate_response(request, self):
             yield result
 
     async def thought_response(
@@ -843,6 +961,7 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
+        file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """Generate response with thought process (legacy compatibility)"""
         request = ChatRequest(
@@ -854,10 +973,12 @@ class ChatBotGenerator:
             top_p=top_p,
             temperature=temperature,
             port=port,
+            enable_thinking=True,
+            file_input=file_input,
         )
 
         generator = self.generators[ModelType.THOUGHT]
-        async for result in generator.generate_response(request):
+        async for result in generator.generate_response(request, self):
             yield result
 
     async def generate_response(
@@ -872,12 +993,13 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
+        file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """
         Unified interface to generate response based on model capabilities
 
         Args:
-            message: User message
+            message: User message (can contain image/video URLs for multimodal models)
             history: Conversation history
             model_name: Name of the model to use
             enable_thought: Whether to enable thought process
@@ -887,9 +1009,11 @@ class ChatBotGenerator:
             top_p: Nucleus sampling probability
             temperature: Sampling temperature
             port: Service port
+            file_input: List of file paths for multimodal content
         """
         request = ChatRequest(
             message=message,
+            model_name=model_name,
             history=history,
             role_setting=role_setting,
             system_prompt=system_prompt,
@@ -897,17 +1021,23 @@ class ChatBotGenerator:
             top_p=top_p,
             temperature=temperature,
             port=port,
+            enable_thinking=enable_thought,
+            file_input=file_input,
         )
+
+        print("chat_request:", request, "\n")
 
         model_type = self._determine_model_type(model_name, enable_thought)
         generator = self.generators[model_type]
 
-        async for result in generator.generate_response(request):
+        print("chat_generator:", generator, "\n")
+        print("model_type:", model_type, "\n")
+
+        async for result in generator.generate_response(request, self):
             yield result
 
 
-# Create default chatbot instance
-chatbot = ChatBotGenerator()
+chatbot = ChatBotGenerator(debug_enabled=True, debug_session_id="default_session")
 
 
 # Example usage functions for debug mode

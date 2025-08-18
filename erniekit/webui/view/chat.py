@@ -37,6 +37,7 @@ def build(manager):
     default_temperature = config.get_default_user_dict("chat", "temperature")
     default_role_setting = config.get_default_user_dict("chat", "role_setting")
     default_system_prompt = config.get_default_user_dict("chat", "system_prompt")
+    default_thought_checkbox = config.get_default_user_dict("chat", "thought_checkbox")
 
     with gr.Tab() as chat_tab:
         chat_info = gr.HTML()
@@ -117,10 +118,11 @@ def build(manager):
                     )
 
                 with gr.Column():
-                    vl_thought_checkbox = gr.Checkbox(
+                    thought_checkbox = gr.Checkbox(
                         label="开启多模思考模式",
                         visible=False,
                         elem_classes="large-checkbox",
+                        value=default_thought_checkbox,
                     )
 
                 submit_btn = gr.Button()
@@ -175,7 +177,7 @@ def build(manager):
     manager.add_elem("chat", "role_setting", role_setting, default_role_setting)
     manager.add_elem("chat", "system_prompt", system_prompt, default_system_prompt)
     manager.add_elem("chat", "file_input", file_input)
-    manager.add_elem("chat", "vl_thought_checkbox", vl_thought_checkbox, False)
+    manager.add_elem("chat", "thought_checkbox", thought_checkbox, False)
 
     manager.add_elem("chat", "chat_tab", chat_tab)
     control.chat_reaction(manager, CommandRunner())

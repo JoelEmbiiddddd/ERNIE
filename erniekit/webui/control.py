@@ -239,6 +239,7 @@ def basic_vl_reaction_by_model_name(manager):
     compute_type = manager.get_elem_by_id("basic", "compute_type")
     virtual_pp_degree = manager.get_elem_by_id("basic", "virtual_pp_degree")
     pp_need_data_degree = manager.get_elem_by_id("basic", "pp_need_data_degree")
+    model_name_or_path = manager.get_elem_by_id("basic", "model_name_or_path")
 
     def update_basic_vl_components(model_name_value):
 
@@ -248,6 +249,7 @@ def basic_vl_reaction_by_model_name(manager):
                 gr.update(interactive=False, value="bf16"),
                 gr.update(visible=True),
                 gr.update(visible=True),
+                gr.update(interactive=False),
             )
 
         return (
@@ -255,12 +257,19 @@ def basic_vl_reaction_by_model_name(manager):
             gr.update(interactive=True),
             gr.update(visible=False),
             gr.update(visible=False),
+            gr.update(interactive=True),
         )
 
     model_name.change(
         fn=update_basic_vl_components,
         inputs=model_name,
-        outputs=[fine_tuning, compute_type, virtual_pp_degree, pp_need_data_degree],
+        outputs=[
+            fine_tuning,
+            compute_type,
+            virtual_pp_degree,
+            pp_need_data_degree,
+            model_name_or_path,
+        ],
     )
 
 
@@ -269,7 +278,7 @@ def chat_vlm_reaction(manager):
     file_input = manager.get_elem_by_id("chat", "file_input")
     model_name = manager.get_elem_by_id("basic", "model_name")
     language = manager.get_elem_by_id("basic", "language")
-    vl_thought_checkbox = manager.get_elem_by_id("chat", "vl_thought_checkbox")
+    thought_checkbox = manager.get_elem_by_id("chat", "thought_checkbox")
 
     def toggle_layout(model_name_value):
         if config.is_vl_models(model_name_value):
@@ -280,19 +289,19 @@ def chat_vlm_reaction(manager):
     model_name.change(
         fn=toggle_layout,
         inputs=model_name,
-        outputs=[chat_input, file_input, vl_thought_checkbox],
+        outputs=[chat_input, file_input, thought_checkbox],
     )
 
     language.change(
         fn=toggle_layout,
         inputs=model_name,
-        outputs=[chat_input, file_input, vl_thought_checkbox],
+        outputs=[chat_input, file_input, thought_checkbox],
     )
 
     manager.demo.load(
         fn=toggle_layout,
         inputs=model_name,
-        outputs=[chat_input, file_input, vl_thought_checkbox],
+        outputs=[chat_input, file_input, thought_checkbox],
     )
 
 
@@ -1512,6 +1521,8 @@ def setup_chatbot_response(manager):
     model_name = manager.get_elem_by_id("basic", "model_name")
     stop_btn = manager.get_elem_by_id("chat", "stop_btn")
     clear_btn = manager.get_elem_by_id("chat", "clear_btn")
+    file_input = manager.get_elem_by_id("chat", "file_input")
+    thought_checkbox = manager.get_elem_by_id("chat", "thought_checkbox")
 
     async def on_submit(
         message,
@@ -1523,19 +1534,22 @@ def setup_chatbot_response(manager):
         temperature,
         port,
         model_name,
+        file_input,
+        thought_checkbox,
     ):
         update_config_yaml(manager, "chat_yaml_path", "chat")
         async for result in chat_generator.generate_response(
             message=message,
             history=history,
             model_name=model_name,
-            enable_thought="False",
+            enable_thought=thought_checkbox,
             role_setting=role,
             system_prompt=system_prompt,
             max_length=max_new_tokens,
             top_p=top_p,
             temperature=temperature,
             port=port,
+            file_input=file_input,
         ):
             yield result
 
@@ -1557,6 +1571,8 @@ def setup_chatbot_response(manager):
             temperature,
             port,
             model_name,
+            file_input,
+            thought_checkbox,
         ],
         outputs=[
             chatbot,
@@ -1577,6 +1593,8 @@ def setup_chatbot_response(manager):
             temperature,
             port,
             model_name,
+            file_input,
+            thought_checkbox,
         ],
         outputs=[
             chatbot,
