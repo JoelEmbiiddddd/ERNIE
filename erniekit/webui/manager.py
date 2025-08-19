@@ -262,6 +262,7 @@ class Manager:
                     gr.Button,
                     gr.HTML,
                     gr.File,
+                    gr.DownloadButton,
                 ),
             )
         ]

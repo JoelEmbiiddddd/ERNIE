@@ -32,6 +32,7 @@ Event response mechanism handling
 import asyncio
 import json
 import os
+import tempfile
 import time
 
 import aiohttp
@@ -107,6 +108,7 @@ def chat_reaction(manager, runner):
     chat_update_max_new_len_max(manager)
     chat_role_setting_system_prompt_handler(manager)
     chat_vlm_reaction(manager)
+    chat_download_log(manager)
 
 
 def train_reaction(manager, runner, module):
@@ -178,6 +180,35 @@ def hide_export_and_eval_tab(manager):
 
     model_name.change(
         fn=hide_tab_by_model_name, inputs=model_name, outputs=[export_tab, eval_tab]
+    )
+
+
+def chat_download_log(manager):
+    output_log_btn = manager.get_elem_by_id("chat", "output_log_btn")
+    model_name = manager.get_elem_by_id("basic", "model_name")
+
+    def create_and_download_json(model_name_value):
+        log_data = chat_generator.export_debug_logs("default_session")
+        parsed_data = json.loads(log_data)
+
+        json_content = json.dumps(parsed_data, indent=2, ensure_ascii=False)
+
+        import os
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"chat_log_{model_name_value}_{timestamp}.json"
+
+        # 创建临时文件
+        fd, temp_path = tempfile.mkstemp(suffix=".json", prefix=filename)
+
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            tmp_file.write(json_content)
+
+        return temp_path
+
+    output_log_btn.click(
+        fn=create_and_download_json, inputs=[model_name], outputs=output_log_btn
     )
 
 
@@ -1265,6 +1296,7 @@ def model_update_callback(manager, stage):
     """
     sft_params = config.get_default_dict_module("train_sft")
     dpo_params = config.get_default_dict_module("train_dpo")
+    vl_sft_params = config.get_default_dict_module("train_vl_sft")
 
     updates = {}
 
@@ -1272,6 +1304,8 @@ def model_update_callback(manager, stage):
         params = sft_params
     elif stage == "DPO":
         params = dpo_params
+    elif stage == "VL-SFT":
+        params = vl_sft_params
     else:
         return updates
 
@@ -1483,8 +1517,14 @@ def setup_update_stage(manager):
 
     def on_component_value_change_by_vl_model_name(model_name):
         if config.is_vl_models(model_name):
-            component_value_list = on_component_value_change("SFT")
-            return component_value_list + [gr.update(interactive=False, value="SFT")]
+            component_value_list = on_component_value_change("VL-SFT")
+            return component_value_list + [
+                gr.update(
+                    interactive=False,
+                    value="VL-SFT",
+                    choices=config.get_choices_kwargs("vl_stages"),
+                )
+            ]
 
         return [gr.update() for _ in all_components] + [gr.update(interactive=True)]
 

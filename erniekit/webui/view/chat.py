@@ -88,7 +88,7 @@ def build(manager):
         with gr.Row():
             with gr.Column(scale=8):
                 chatbot = gr.Chatbot(
-                    height=500,
+                    height=550,
                     show_label=True,
                     show_copy_button=True,
                     type="messages",
@@ -130,6 +130,8 @@ def build(manager):
                 stop_btn = gr.Button()
 
                 clear_btn = gr.Button()
+
+                output_log_btn = gr.DownloadButton()
 
         with gr.Column(scale=2):
             with gr.Row():
@@ -178,6 +180,7 @@ def build(manager):
     manager.add_elem("chat", "system_prompt", system_prompt, default_system_prompt)
     manager.add_elem("chat", "file_input", file_input)
     manager.add_elem("chat", "thought_checkbox", thought_checkbox, False)
+    manager.add_elem("chat", "output_log_btn", output_log_btn)
 
     manager.add_elem("chat", "chat_tab", chat_tab)
     control.chat_reaction(manager, CommandRunner())

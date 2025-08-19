@@ -82,6 +82,7 @@ class ConfigManager:
             "compute_type_LoRA": ["bf16", "fp16", "fp8", "wint8", "wint4/8"],
             "best_config": ["SFT", "DPO"],
             "stages": ["SFT", "DPO"],
+            "vl_stages": ["VL-SFT"],
             "language": ["zh", "en"],
             "boolean_choice": ["True", "False"],
             "moe_group": ["dummy", "mp"],
@@ -324,6 +325,9 @@ class ConfigManager:
             "train_dpo": self.get_commands_cli("train")
             + " "
             + self.get_execute_yaml_path("train_dpo_yaml_path"),
+            "train_vl_sft": self.get_commands_cli("train")
+            + " "
+            + self.get_execute_yaml_path("train_vl_sft_yaml_path"),
         }
 
         return execute_command.get(name)

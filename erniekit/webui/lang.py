@@ -857,6 +857,10 @@ LOCALES = {
             "info": "Configuration item for multi-modal and pure text data ratio",
         },
     },
+    "output_log_btn": {
+        "zh": {"label": "对话日志下载"},
+        "en": {"label": "Download Log"},
+    },
 }
 
 

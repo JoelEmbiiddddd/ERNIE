@@ -322,7 +322,7 @@ class MessageProcessor:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": "https://paddlenlp.bj.bcebos.com/datasets/paddlemix/demo_images/example2.jpg"
+                            "url": "/root/paddlejob/workspace/env_run/webui/ERNIE/erniekit/webui/config/files/example2.jpg"
                         },
                     }
                 )
@@ -359,7 +359,7 @@ class ResponseFormatter:
             f"<details open><summary>思考过程</summary>\n"
             f"<div class='thought-container' style='font-size: 13px;opacity: 0.85;"
             f"padding-left:20px;border-left:3px solid #ddd;"
-            f"margin-bottom: 1em;'>{thought_content}</div>\n"
+            f"margin-bottom: 1em;'>\n{thought_content}</div>\n"
             f"</details>\n"
             f"<div class='response-container' style='line-height: 1.5;'>{response_content}</div>"
         )
@@ -395,19 +395,21 @@ class BaseResponseGenerator(ABC):
         request: ChatRequest,
         enable_thinking: bool = False,
     ):
-        request_message = {
-            "messages": messages,
-        }
 
         if enable_thinking:
-            request_message = {
-                "messages": messages,
-                "chat_template_kwargs": {"enable_thinking": enable_thinking},
-            }
+            request_messages = []
+            for message in messages:
+                request_message = message.copy()
+                request_message["chat_template_kwargs"] = {
+                    "enable_thinking": enable_thinking
+                }
+                request_messages.append(request_message)
+        else:
+            request_messages = messages
 
         completion_params = {
             "model": request.model_name,
-            "messages": request_message,
+            "messages": request_messages,
             "stream": True,
         }
 
