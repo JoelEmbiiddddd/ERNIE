@@ -143,7 +143,7 @@ train_vl_sft:
   rslora: False
   ### finetuning
   # base
-  stage: SFT
+  stage: VL-SFT
   recompute: False
   num_train_epochs: 1
   max_steps: 100
@@ -181,3 +181,4 @@ execute:
   eval_yaml_path: "eval.yaml"
   train_sft_yaml_path: "train_sft.yaml"
   train_dpo_yaml_path: "train_dpo.yaml"
+  train_vl_sft_yaml_path: "train_vl_sft.yaml"

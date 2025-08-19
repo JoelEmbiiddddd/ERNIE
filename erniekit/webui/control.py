@@ -1130,8 +1130,8 @@ def setup_start_button(manager, runner, module):
 
     async def start_execution(stage_value, model_name_or_path_value):
         if module == "train":
-            execute_path = f"train_{stage_value.lower()}_yaml_path"
-            command_name = f"train_{stage_value.lower()}"
+            execute_path = f"train_{stage_value.replace('-', '_').lower()}_yaml_path"
+            command_name = f"train_{stage_value.replace('-', '_').lower()}"
 
             if not model_name_or_path_value:
                 gr.Warning(alert.get("model_is_None", "warning", "zh"))
@@ -1481,6 +1481,7 @@ def setup_update_stage(manager):
     """
     best_config_elem = manager.get_elem_by_id("basic", "best_config")
     model_name = manager.get_elem_by_id("basic", "model_name")
+    stage = manager.get_elem_by_id("train", "stage")
 
     train_component_elem_list = manager.get_dependencies("basic.best_config.train")
     basic_component_elem_list = manager.get_dependencies("basic.best_config.basic")
@@ -1500,34 +1501,49 @@ def setup_update_stage(manager):
             basic_components.append((full_id, component))
 
     all_components = train_components + basic_components
+    # 定义常量
+    BASIC_CONFIG = "basic"
+    BEST_CONFIG_KEY = "best_config"
+    VL_SFT_VALUE = "VL-SFT"
 
     def on_component_value_change(value):
-        manager._update_component_value("basic", "best_config", value)
-
+        manager._update_component_value(BASIC_CONFIG, BEST_CONFIG_KEY, value)
         updates = model_update_callback(manager, value)
 
-        output_list = []
-        for full_id, component in all_components:
-            if full_id in updates:
-                output_list.append(updates[full_id])
-            else:
-                output_list.append(gr.update())
-
-        return output_list
+        return [updates.get(full_id, gr.update()) for full_id, _ in all_components]
 
     def on_component_value_change_by_vl_model_name(model_name):
+        # 先准备基础的组件更新列表
+        base_updates = [gr.update() for _ in all_components]
+
         if config.is_vl_models(model_name):
-            component_value_list = on_component_value_change("VL-SFT")
-            return component_value_list + [
+            # 获取VL-SFT相关的更新
+            vl_updates = on_component_value_change(VL_SFT_VALUE)
+
+            # 构造完整的返回列表
+            return vl_updates + [
+                # best_config_elem 更新 - 禁用交互，设置为VL-SFT
                 gr.update(
                     interactive=False,
-                    value="VL-SFT",
+                    value=VL_SFT_VALUE,
                     choices=config.get_choices_kwargs("vl_stages"),
-                )
+                ),
+                # stage 更新 - 设置为VL-SFT
+                gr.update(
+                    value=VL_SFT_VALUE,
+                    choices=config.get_choices_kwargs("vl_stages"),
+                ),
             ]
 
-        return [gr.update() for _ in all_components] + [gr.update(interactive=True)]
+        # 非VL模型的情况
+        return base_updates + [
+            # best_config_elem 更新 - 启用交互
+            gr.update(interactive=True, choices=config.get_choices_kwargs("stages")),
+            # stage 更新
+            gr.update(choices=config.get_choices_kwargs("stages")),
+        ]
 
+    # 事件绑定
     best_config_elem.change(
         fn=on_component_value_change,
         inputs=[best_config_elem],
@@ -1537,7 +1553,8 @@ def setup_update_stage(manager):
     model_name.change(
         fn=on_component_value_change_by_vl_model_name,
         inputs=[model_name],
-        outputs=[component for _, component in all_components] + [best_config_elem],
+        outputs=[component for _, component in all_components]
+        + [best_config_elem, stage],
     )
 
 

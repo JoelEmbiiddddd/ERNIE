@@ -405,6 +405,9 @@ class ConfigManager:
             "train_dpo_yaml_path": os.path.join(
                 EXECUTE_PATH, execute_path_list["train_dpo_yaml_path"]
             ),
+            "train_vl_sft_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["train_vl_sft_yaml_path"]
+            ),
         }
 
     def get_gpu_count(self):
