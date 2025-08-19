@@ -319,7 +319,12 @@ class MessageProcessor:
             # Add image files
             for img_path in classified_files.get("image_url", []):
                 content_list.append(
-                    {"type": "image_url", "image_url": {"url": img_path}}
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "https://paddlenlp.bj.bcebos.com/datasets/paddlemix/demo_images/example2.jpg"
+                        },
+                    }
                 )
 
             # Add video files
@@ -390,18 +395,21 @@ class BaseResponseGenerator(ABC):
         request: ChatRequest,
         enable_thinking: bool = False,
     ):
-        """Create chat completion with common parameters"""
-        completion_params = {
-            "model": request.model_name,
+        request_message = {
             "messages": messages,
-            "temperature": request.temperature,
-            "top_p": request.top_p,
-            "max_tokens": request.max_length,
-            "stream": True,
         }
 
         if enable_thinking:
-            completion_params["chat_template_kwargs"] = {"enable_thinking": True}
+            request_message = {
+                "messages": messages,
+                "chat_template_kwargs": {"enable_thinking": enable_thinking},
+            }
+
+        completion_params = {
+            "model": request.model_name,
+            "messages": request_message,
+            "stream": True,
+        }
 
         return client.chat.completions.create(**completion_params)
 
@@ -463,8 +471,6 @@ class TextResponseGenerator(BaseResponseGenerator):
                 chatbot_instance=chatbot_instance,
             )
 
-            print("messages:", messages)
-
             # Create debug info
             debug_info = self._create_debug_info(request, messages, ModelType.TEXT)
 
@@ -485,8 +491,6 @@ class TextResponseGenerator(BaseResponseGenerator):
             debug_info.response_content = assistant_response["content"]
             debug_info.generation_time = time.time() - start_time
             debug_info.token_count = token_count
-
-            print("new_history:", new_history)
 
             yield new_history, gr.update(value="")
 
@@ -819,7 +823,7 @@ class ChatBotGenerator:
     def _create_openai_client(self, port: int) -> openai.Client:
         """Create OpenAI client connection"""
         base_url = f"http://{self.default_ip}:{port}/v1"
-        return openai.Client(base_url=base_url, api_key="EMPTY_API_KEY")
+        return openai.Client(base_url=base_url, api_key="null")
 
     def _classifie_file_by_ext(self, file_input: List) -> Dict:
         classified = {"image_url": [], "video_url": [], "non_type": []}

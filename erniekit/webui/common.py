@@ -37,6 +37,7 @@ ROOT_PATH = os.path.dirname(ERNIEKIT_PATH)
 CONFIG_PATH = os.path.join(WEBUI_PATH, "config")
 DEFAULT_DATASET_PATH = os.path.join(CONFIG_PATH, "dataset.json")
 EXECUTE_PATH = os.path.join(CONFIG_PATH, "execute")
+LOAD_PARAM_PATH = os.path.join(EXECUTE_PATH, "load_param.yaml")
 
 
 class ConfigManager:
@@ -126,6 +127,7 @@ class ConfigManager:
             ".webm",
             ".mpeg",
         }
+        self.load_param_config = self._init_load_config()
 
     def _init_model_config(self):
         return {
@@ -143,6 +145,24 @@ class ConfigManager:
 
     def _is_video_file(self, extension):
         return extension in self.video_extensions
+
+    def _init_load_config(self):
+        try:
+            with open(LOAD_PARAM_PATH, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+
+            if "train_sft" in data:
+                data["train"] = copy.deepcopy(data["train_sft"])
+            return data
+        except FileNotFoundError:
+            print(f"Error: File not found: {LOAD_PARAM_PATH}")
+            return None
+        except yaml.YAMLError as e:
+            print(f"YAML parsing error：{e}")
+            return None
+
+    def get_load_param_config(self, module):
+        return self.load_param_config[module]
 
     def get_file_type(self):
         return self._files_type
@@ -560,7 +580,11 @@ def abort_process(pid: int) -> None:
             pass
 
 
-def flatten_dict(nested_dict, parent_key="", separator=".", exclude_keys=None):
+def flatten_dict(
+    nested_dict,
+    parent_key="",
+    separator=".",
+):
     """
     Flatten a nested dictionary into a single-level dictionary, with optional key exclusion.
 
@@ -568,21 +592,16 @@ def flatten_dict(nested_dict, parent_key="", separator=".", exclude_keys=None):
         nested_dict (dict): The nested dictionary to flatten
         parent_key (str): Prefix for parent keys (default: "")
         separator (str): Separator between nested key levels (default: ".")
-        exclude_keys (list): List of keys to exclude from flattening (default: None)
 
     Returns:
         dict: Flattened dictionary with combined keys
     """
-    if exclude_keys is None:
-        exclude_keys = []
 
     items = {}
     for key, value in nested_dict.items():
-        if key in exclude_keys:
-            continue
 
         if isinstance(value, dict):
-            items.update(flatten_dict(value, "", separator, exclude_keys))
+            items.update(flatten_dict(value, "", separator))
         else:
             items[key] = value
     return items
@@ -632,8 +651,7 @@ def merge_dict_to_yaml(
     manager,
     dict_data,
     yaml_file_path,
-    first_level_keys=None,
-    exclude_keys=None,
+    module,
     is_preview=False,
 ):
     """
@@ -643,8 +661,7 @@ def merge_dict_to_yaml(
     Args:
         dict_data (dict): Source dictionary data to update from
         yaml_file_path (str): Path to the target YAML file
-        first_level_keys (list): List of first-level keys to process (None processes all)
-        exclude_keys (list): List of keys to exclude from updating
+        module (str): List of first-level keys to process (None processes all)
         (list): List of keys requiring special list formatting
     """
 
@@ -652,38 +669,40 @@ def merge_dict_to_yaml(
     filtered_dict = {
         k.replace("specific_", ""): v
         for k, v in all_components.items()
-        if k.replace("specific_", "") in set(first_level_keys)
+        if k.replace("specific_", "") in module
     }
 
-    merged_dict = deep_merge(filtered_dict, dict_data.copy())
-
-    if first_level_keys:
-        merged_dict = {key: merged_dict.get(key, {}) for key in first_level_keys}
-        merged_dict = update_dataset_paths(merged_dict, manager, is_preview)
-
-    flattened_dict = special_handling_from_config_dict(
-        flatten_dict(merged_dict, exclude_keys=exclude_keys)
+    merged_dict = update_dataset_paths(
+        {
+            key: deep_merge(filtered_dict, dict_data.copy()).get(key, {})
+            for key in ["basic", module]
+        },
+        manager,
+        is_preview,
     )
+    flattened_dict = flatten_dict(merged_dict)
 
-    for key, value in flattened_dict.items():
+    final_webui_config_param = special_handling_from_config_dict(flattened_dict, module)
+
+    for key, value in final_webui_config_param.items():
         parsed_value = parse_string_to_list(value)
         if isinstance(parsed_value, list):
             if len(parsed_value) == 1:
-                flattened_dict[key] = str(parsed_value[0])
+                final_webui_config_param[key] = str(parsed_value[0])
             else:
-                flattened_dict[key] = ",".join(map(str, parsed_value))
+                final_webui_config_param[key] = ",".join(map(str, parsed_value))
         else:
             converted_value = convert_boolean_strings(value)
             if isinstance(converted_value, str) and is_numeric_string(converted_value):
                 try:
                     if "." in converted_value:
-                        flattened_dict[key] = float(converted_value)
+                        final_webui_config_param[key] = float(converted_value)
                     else:
-                        flattened_dict[key] = int(converted_value)
+                        final_webui_config_param[key] = int(converted_value)
                 except ValueError:
-                    flattened_dict[key] = converted_value
+                    final_webui_config_param[key] = converted_value
             else:
-                flattened_dict[key] = converted_value
+                final_webui_config_param[key] = converted_value
 
     if os.path.exists(yaml_file_path):
         with open(yaml_file_path, "r", encoding="utf-8") as f:
@@ -691,7 +710,7 @@ def merge_dict_to_yaml(
     else:
         yaml_data = {}
 
-    yaml_data.update(flattened_dict)
+    yaml_data.update(final_webui_config_param)
 
     with open(yaml_file_path, "w", encoding="utf-8") as f:
         yaml.dump(
@@ -726,13 +745,18 @@ def is_numeric_string(s):
         return False
 
 
-def special_handling_from_config_dict(config_dict):
+def special_handling_from_config_dict(config_dict, module):
 
-    if "modality_ratio" not in config_dict:
-        config_dict["modality_ratio"] = 0
+    module_load_param = config.get_load_param_config(module)
 
-    config_dict["modality_ratio"] = [0, config_dict["modality_ratio"]]
-    return config_dict
+    user_config_dict = {
+        key: value for key, value in config_dict.items() if key in module_load_param
+    }
+
+    if "modality_ratio" in user_config_dict:
+        user_config_dict["modality_ratio"] = 0
+        user_config_dict["modality_ratio"] = [0, user_config_dict["modality_ratio"]]
+    return user_config_dict
 
 
 def deep_merge(source, destination):
