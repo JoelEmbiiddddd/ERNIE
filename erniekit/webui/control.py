@@ -32,8 +32,8 @@ Event response mechanism handling
 import asyncio
 import json
 import os
-import tempfile
 import time
+from datetime import datetime
 
 import aiohttp
 import gradio as gr
@@ -47,6 +47,7 @@ from erniekit.webui.runner import CommandRunner
 from erniekit.webui.view.style import html_progress
 
 has_shown_info = False
+_chat_download_state = {"ready": False, "file_path": None}
 
 
 def basic_reaction(manager):
@@ -60,6 +61,7 @@ def basic_reaction(manager):
     setup_model_name_or_path_update(manager)
     update_compute_type_by_fine_tuning(manager)
     basic_vl_reaction_by_model_name(manager)
+    change_language_in_config(manager)
 
 
 def eval_reaction(manager, runner, module):
@@ -107,7 +109,7 @@ def chat_reaction(manager, runner):
     chat_status_button_handler(manager, CommandRunner())
     chat_update_max_new_len_max(manager)
     chat_role_setting_system_prompt_handler(manager)
-    chat_vlm_reaction(manager)
+    chat_vl_reaction(manager)
     chat_download_log(manager)
 
 
@@ -134,7 +136,32 @@ def train_reaction(manager, runner, module):
     train_dataset_row_show_up(manager)
 
 
+def change_language_in_config(manager):
+    language = manager.get_elem_by_id("basic", "language")
+
+    def change_config_language(language_value):
+        config.set_language(language_value)
+
+    language.change(fn=change_config_language, inputs=[language])
+
+    manager.demo.load(
+        fn=change_config_language,
+        inputs=[language],
+    )
+
+
 def train_dataset_row_show_up(manager):
+    """
+    Prepare and display training dataset rows in the interface
+
+    Retrieves and formats training dataset rows for display, likely preparing
+    the data structure or UI components needed to show dataset entries in a
+    training context.
+
+    Args:
+        manager: The dataset or training manager instance that handles
+            dataset operations and state management
+    """
     model_name = manager.get_elem_by_id("basic", "model_name")
     modality_ratio = manager.get_elem_by_id("train", "modality_ratio")
     text_dataset_row = manager.get_elem_by_id("train", "text_dataset_row")
@@ -167,6 +194,15 @@ def train_dataset_row_show_up(manager):
 
 
 def hide_export_and_eval_tab(manager):
+    """
+    Hide the export and evaluation tabs in the interface
+
+    Controls the visibility of export and evaluation-related tabs in the UI,
+    likely to simplify the interface when these features are not needed.
+
+    Args:
+        manager: The UI or state manager controlling tab visibility
+    """
     export_tab = manager.get_elem_by_id("export", "export_tab")
     eval_tab = manager.get_elem_by_id("eval", "eval_tab")
     model_name = manager.get_elem_by_id("basic", "model_name")
@@ -184,39 +220,74 @@ def hide_export_and_eval_tab(manager):
 
 
 def chat_download_log(manager):
-    output_log_btn = manager.get_elem_by_id("chat", "output_log_btn")
+    """
+    Handle downloading of chat logs
+
+    Triggers the process to download chat logs, possibly formatting them
+    appropriately and initiating the download through the interface.
+
+    Args:
+        manager: The chat or state manager containing the chat logs to download
+    """
+    generate_log_btn = manager.get_elem_by_id("chat", "generate_log_btn")
+    download_log_btn = manager.get_elem_by_id("chat", "download_log_btn")
     model_name = manager.get_elem_by_id("basic", "model_name")
 
-    def create_and_download_json(model_name_value):
-        log_data = chat_generator.export_debug_logs("default_session")
-        parsed_data = json.loads(log_data)
+    def generate_log_file(model_name_value):
+        global _chat_download_state
 
-        json_content = json.dumps(parsed_data, indent=2, ensure_ascii=False)
+        try:
+            log_data = chat_generator.export_debug_logs("default_session")
+            parsed_data = json.loads(log_data)
 
-        import os
-        from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f"chat_log_{model_name_value}_{timestamp}.json"
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"chat_log_{model_name_value}_{timestamp}.json"
+            log_path = common.save_chat_log(parsed_data, filename)
 
-        # 创建临时文件
-        fd, temp_path = tempfile.mkstemp(suffix=".json", prefix=filename)
+            _chat_download_state["ready"] = True
+            _chat_download_state["file_path"] = log_path
 
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
-            tmp_file.write(json_content)
+            return (gr.update(visible=False), gr.update(visible=True, value=log_path))
+        except Exception as e:
+            generate_log_error = alert.get("generate_log", "error")
+            print(generate_log_error, e)
+            gr.Warning(generate_log_error)
+            return (gr.update(visible=True), gr.update(visible=False))
 
-        return temp_path
+    def after_download():
+        global _chat_download_state
 
-    output_log_btn.click(
-        fn=create_and_download_json, inputs=[model_name], outputs=output_log_btn
+        _chat_download_state["ready"] = False
+        _chat_download_state["file_path"] = None
+
+        return (gr.update(visible=True), gr.update(visible=False))
+
+    generate_log_btn.click(
+        fn=generate_log_file,
+        inputs=[model_name],
+        outputs=[generate_log_btn, download_log_btn],
+    )
+
+    download_log_btn.click(
+        fn=after_download, inputs=[], outputs=[generate_log_btn, download_log_btn]
     )
 
 
-def train_vl_reaction_simplified(
+def train_vl_reaction_for_dataset_row(
     manager, train_row_components, eval_row_components, text_row_components
 ):
     """
-    简化版本，直接传入row_components参数
+    Handle reactions for vision-language dataset rows in training/evaluation
+
+    Manages UI or state reactions for dataset rows containing vision-language content,
+    coordinating training, evaluation, and text components for proper display or processing.
+
+    Args:
+        manager: The training or dataset manager handling the state
+        train_row_components: Components related to training dataset rows
+        eval_row_components: Components related to evaluation dataset rows
+        text_row_components: Text-specific components within dataset rows
     """
     model_name = manager.get_elem_by_id("basic", "model_name")
 
@@ -243,7 +314,6 @@ def train_vl_reaction_simplified(
 
         return type_dropdown_updates
 
-    # 收集所有type dropdown组件
     type_dropdown_outputs = []
     for row in train_row_components:
         if len(row) > 1:
@@ -255,7 +325,6 @@ def train_vl_reaction_simplified(
         if len(row) > 1:
             type_dropdown_outputs.append(row[1])
 
-    # 绑定事件
     manager.demo.load(
         fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
     )
@@ -265,6 +334,15 @@ def train_vl_reaction_simplified(
 
 
 def basic_vl_reaction_by_model_name(manager):
+    """
+    Handle basic vision-language reactions based on the selected model name
+
+    Triggers model-specific UI or processing reactions for vision-language tasks,
+    adjusting behavior based on the currently selected model.
+
+    Args:
+        manager: The model or state manager containing the selected model information
+    """
     model_name = manager.get_elem_by_id("basic", "model_name")
     fine_tuning = manager.get_elem_by_id("basic", "fine_tuning")
     compute_type = manager.get_elem_by_id("basic", "compute_type")
@@ -304,7 +382,16 @@ def basic_vl_reaction_by_model_name(manager):
     )
 
 
-def chat_vlm_reaction(manager):
+def chat_vl_reaction(manager):
+    """
+    Handle reactions for vision-language content in chat interactions
+
+    Manages UI updates or processing logic when vision-language content (e.g., images with text)
+    is involved in chat interactions, ensuring proper handling and display.
+
+    Args:
+        manager: The chat or state manager handling the chat interaction state
+    """
     chat_input = manager.get_elem_by_id("chat", "chat_input")
     file_input = manager.get_elem_by_id("chat", "file_input")
     model_name = manager.get_elem_by_id("basic", "model_name")
@@ -1015,7 +1102,7 @@ def setup_preview_button(manager, module):
 
     def module_command_preview(stage):
         if module == "train":
-            execute_path = f"train_{stage.lower()}_yaml_path"
+            execute_path = f"train_{stage.lower().replace('-', '_')}_yaml_path"
         else:
             execute_path = module + "_yaml_path"
 
@@ -1501,7 +1588,6 @@ def setup_update_stage(manager):
             basic_components.append((full_id, component))
 
     all_components = train_components + basic_components
-    # 定义常量
     BASIC_CONFIG = "basic"
     BEST_CONFIG_KEY = "best_config"
     VL_SFT_VALUE = "VL-SFT"
@@ -1513,37 +1599,36 @@ def setup_update_stage(manager):
         return [updates.get(full_id, gr.update()) for full_id, _ in all_components]
 
     def on_component_value_change_by_vl_model_name(model_name):
-        # 先准备基础的组件更新列表
         base_updates = [gr.update() for _ in all_components]
-
         if config.is_vl_models(model_name):
-            # 获取VL-SFT相关的更新
             vl_updates = on_component_value_change(VL_SFT_VALUE)
+            return vl_updates
 
-            # 构造完整的返回列表
-            return vl_updates + [
-                # best_config_elem 更新 - 禁用交互，设置为VL-SFT
+        return base_updates
+
+    def update_stage_by_model_name(model_name):
+        if config.is_vl_models(model_name):
+            return [
                 gr.update(
                     interactive=False,
                     value=VL_SFT_VALUE,
                     choices=config.get_choices_kwargs("vl_stages"),
                 ),
-                # stage 更新 - 设置为VL-SFT
                 gr.update(
                     value=VL_SFT_VALUE,
                     choices=config.get_choices_kwargs("vl_stages"),
                 ),
             ]
 
-        # 非VL模型的情况
-        return base_updates + [
-            # best_config_elem 更新 - 启用交互
-            gr.update(interactive=True, choices=config.get_choices_kwargs("stages")),
-            # stage 更新
-            gr.update(choices=config.get_choices_kwargs("stages")),
+        return [
+            gr.update(
+                interactive=True,
+                choices=config.get_choices_kwargs("stages"),
+                value="SFT",
+            ),
+            gr.update(choices=config.get_choices_kwargs("stages"), value="SFT"),
         ]
 
-    # 事件绑定
     best_config_elem.change(
         fn=on_component_value_change,
         inputs=[best_config_elem],
@@ -1551,10 +1636,13 @@ def setup_update_stage(manager):
     )
 
     model_name.change(
+        fn=update_stage_by_model_name,
+        inputs=[model_name],
+        outputs=[best_config_elem, stage],
+    ).then(
         fn=on_component_value_change_by_vl_model_name,
         inputs=[model_name],
-        outputs=[component for _, component in all_components]
-        + [best_config_elem, stage],
+        outputs=[component for _, component in all_components],
     )
 
 
@@ -1614,6 +1702,7 @@ def setup_chatbot_response(manager):
         chat_generator.stop()
 
     def on_clear():
+        chat_generator.clear_debug_logs()
         return [], ""
 
     submit_btn.click(

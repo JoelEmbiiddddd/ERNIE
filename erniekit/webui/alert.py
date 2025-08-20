@@ -196,6 +196,31 @@ ALERTS = {
     "model_is_None": {
         "warning": {"zh": "模型路径不能为空", "en": "Model path can not be none"}
     },
+    "generate_log": {
+        "warning": {
+            "zh": "生成日志失败",
+            "en": "Failed to generate log",
+        }
+    },
+    "role_setting": {
+        "append": {
+            "zh": "你现在扮演: {}",
+            "en": "You are now playing: {}",
+        }
+    },
+    "thought_process": {"info": {"zh": "思考过程", "en": "Thought Process"}},
+    "chatbot_api": {
+        "text": {"zh": "API调用失败: {}", "en": "API call failed: {}"},
+        "multimodal": {
+            "zh": "多模态API调用失败: {}",
+            "en": "Multimodal API call failed: {}",
+        },
+        "thought": {"zh": "思考过程生成失败: {}", "en": "Thoughts API call failed: {}"},
+        "multimodal_thought": {
+            "zh": "多模态思考过程生成失败: {}",
+            "en": "Multimodal API call failed: {}",
+        },
+    },
 }
 
 

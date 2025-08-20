@@ -857,9 +857,17 @@ LOCALES = {
             "info": "Configuration item for multi-modal and pure text data ratio",
         },
     },
-    "output_log_btn": {
-        "zh": {"label": "对话日志下载"},
-        "en": {"label": "Download Log"},
+    "generate_log_btn": {
+        "zh": {"label": "生成对话日志"},
+        "en": {"label": "Generate Chat Log"},
+    },
+    "download_log_btn": {
+        "zh": {"label": "下载对话日志"},
+        "en": {"label": "Download Chat Log"},
+    },
+    "chat_role_setting": {
+        "zh": {"label": "角色设置"},
+        "en": {"label": "Role Setting"},
     },
 }
 

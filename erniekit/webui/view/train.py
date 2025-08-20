@@ -611,7 +611,7 @@ def build(manager):
             "train_dataset_preview_btn",
         ],
     )
-    control.train_vl_reaction_simplified(
+    control.train_vl_reaction_for_dataset_row(
         manager,
         train_dataset_elem["row_components"],
         eval_dataset_elem["row_components"],

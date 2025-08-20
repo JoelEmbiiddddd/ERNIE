@@ -16,6 +16,7 @@
 Optimized Chatbot architecture supporting text, multimodal, and thought models
 with enhanced debugging capabilities
 """
+
 import asyncio
 import json
 import time
@@ -29,6 +30,7 @@ import gradio as gr
 import openai
 
 from erniekit.webui.common import config
+from erniekit.webui.alert import alert
 
 
 @dataclass
@@ -56,7 +58,7 @@ class DebugInfo:
     session_id: str
     model_type: str
     request_data: Dict[str, Any]
-    processed_messages: List[Dict[str, str]]
+    requested_messages: List[Dict[str, str]]
     response_content: str
     thought_content: str = ""
     generation_time: float = 0.0
@@ -73,11 +75,17 @@ class DebugLogger:
         self.current_session_id: Optional[str] = None
 
         # Setup logging
-        logging.basicConfig(level=getattr(logging, log_level.upper()))
+        # logging.basicConfig(level=getattr(logging, log_level.upper()))
         self.logger = logging.getLogger(__name__)
 
     def enable_debug(self, session_id: Optional[str] = None):
-        """Enable debug mode"""
+        """
+        Enable debug logging for this session
+
+        Args:
+            self: Instance reference
+            session_id (str): session id
+        """
         self.enabled = True
         if session_id:
             self.current_session_id = session_id
@@ -90,23 +98,41 @@ class DebugLogger:
         self.logger.info(f"Debug mode enabled for session: {self.current_session_id}")
 
     def disable_debug(self):
-        """Disable debug mode"""
+        """
+        Disable debug logging for this session
+
+        Args:
+        self: Instance reference
+        """
         self.enabled = False
         self.logger.info("Debug mode disabled")
 
     def log_debug_info(self, debug_info: DebugInfo):
-        """Log debug information"""
+        """
+        Log debug information for the current session
+
+        Args:
+        self: Instance reference
+        debug_info (DebugInfo): Debug information object to be logged
+        """
+
         if not self.enabled or not self.current_session_id:
             return
 
-        # Add to session logs
         self.session_logs[self.current_session_id].append(debug_info)
 
         # Print debug info
-        self._print_debug_info(debug_info)
+        # self._print_debug_info(debug_info)
 
     def _print_debug_info(self, debug_info: DebugInfo):
-        """Print formatted debug information"""
+        """
+        Print formatted debug information
+
+        Args:
+        self: Instance reference
+        debug_info (DebugInfo): Debug information object to be printed in formatted form
+        """
+
         print("\n" + "=" * 80)
         print(f"🐛 DEBUG INFO - {debug_info.timestamp}")
         print("=" * 80)
@@ -131,7 +157,7 @@ class DebugLogger:
 
         print("\n📨 PROCESSED MESSAGES:")
         print("-" * 40)
-        for i, msg in enumerate(debug_info.processed_messages):
+        for i, msg in enumerate(debug_info.requested_messages):
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
             if isinstance(content, list):
@@ -163,14 +189,32 @@ class DebugLogger:
         print("=" * 80 + "\n")
 
     def get_session_logs(self, session_id: Optional[str] = None) -> List[DebugInfo]:
-        """Get logs for a specific session"""
+        """
+        Get logs for a specific session or the current session if no session ID is provided
+
+        Args:
+        self: Instance reference
+        session_id (Optional[str]): Session ID to retrieve logs for. If None, uses current session ID
+        Returns:
+        List[DebugInfo]: List of debug information objects for the specified session
+        """
+
         target_session = session_id or self.current_session_id
         return self.session_logs.get(target_session, [])
 
     def export_session_logs(
         self, session_id: Optional[str] = None, format: str = "json"
     ) -> str:
-        """Export session logs in specified format"""
+        """
+        Export logs for a specific session or the current session if no session ID is provided
+
+        Args:
+        self: Instance reference
+        session_id (Optional[str]): Session ID to export logs for. If None, uses current session ID
+        format (str): Export format ('json' or 'txt')
+        Returns:
+        str: Formatted string representation of the logs
+        """
         logs = self.get_session_logs(session_id)
 
         if format.lower() == "json":
@@ -190,7 +234,13 @@ class DebugLogger:
             raise ValueError(f"Unsupported export format: {format}")
 
     def clear_session_logs(self, session_id: Optional[str] = None):
-        """Clear logs for a specific session"""
+        """
+        Clear logs for a specific session or the current session if no session ID is provided
+
+        Args:
+        self: Instance reference
+        session_id (Optional[str]): Session ID to clear logs for. If None, uses current session ID
+        """
         target_session = session_id or self.current_session_id
         if target_session in self.session_logs:
             del self.session_logs[target_session]
@@ -216,8 +266,8 @@ class MessageProcessor:
         role_setting: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_multimodal: bool = False,
-        file_input: Optional[List[str]] = None,  # Added file_input parameter
-        chatbot_instance=None,  # Added to access _classifie_file_by_ext method
+        file_input: Optional[List[str]] = None,
+        chatbot_instance=None,
     ) -> List[Dict[str, Any]]:
         """
         Build standardized message history from various input formats
@@ -259,10 +309,23 @@ class MessageProcessor:
     def _build_system_content(
         role_setting: Optional[str], system_prompt: Optional[str]
     ) -> str:
-        """Build system content from role setting and system prompt"""
+        """
+        Build system content based on role setting and system prompt
+
+        Args:
+            role_setting: Role configuration
+            system_prompt: System prompt
+
+        Returns:
+            String representing system content
+        """
         content_parts = []
         if role_setting:
-            content_parts.append(f"你现在扮演: {role_setting}")
+            content_parts.append(
+                alert.get("role_setting", "append", config.get_language()).format(
+                    role_setting
+                )
+            )
         if system_prompt:
             content_parts.append(system_prompt)
         return "".join(content_parts)
@@ -271,7 +334,16 @@ class MessageProcessor:
     def _parse_history(
         history: List[Union[Dict, List, Tuple]], is_multimodal: bool = False
     ) -> List[Dict[str, Any]]:
-        """Parse various history formats into standardized format"""
+        """
+        Parse conversation history into a standardized list of dictionaries
+
+        Args:
+        history (List[Union[Dict, List, Tuple]]): Conversation history data in various formats
+        is_multimodal (bool, optional): Flag indicating if history contains multimodal content. Defaults to False
+        Returns:
+        List[Dict[str, Any]]: Standardized list of dictionaries representing conversation history
+
+        """
         messages = []
 
         for entry in history:
@@ -312,32 +384,27 @@ class MessageProcessor:
         """
         content_list = []
 
-        # Process local file inputs if provided
         if file_input and chatbot_instance:
             classified_files = chatbot_instance._classifie_file_by_ext(file_input)
 
-            # Add image files
             for img_path in classified_files.get("image_url", []):
                 content_list.append(
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": "/root/paddlejob/workspace/env_run/webui/ERNIE/erniekit/webui/config/files/example2.jpg"
+                            "url": img_path,
                         },
                     }
                 )
 
-            # Add video files
             for vid_path in classified_files.get("video_url", []):
                 content_list.append(
                     {"type": "video_url", "video_url": {"url": vid_path}}
                 )
 
-        # Add text content if there's any text
         if message.strip():
             content_list.append({"type": "text", "text": message.strip()})
 
-        # Return content list if we have multimodal content, otherwise return plain text
         if (
             content_list
             and len(content_list) > 1
@@ -345,7 +412,6 @@ class MessageProcessor:
         ):
             return content_list
 
-        # If only text content, return as simple string
         return message
 
 
@@ -354,9 +420,19 @@ class ResponseFormatter:
 
     @staticmethod
     def format_thought_response(thought_content: str, response_content: str) -> str:
-        """Format response with thought process"""
+        """
+        Format thought response with HTML details element
+
+        Args:
+            thought_content: Thought content as a string
+            response_content: Response content as a string
+
+        Returns:
+            Formatted HTML string
+        """
+        thought_process = alert.get("thought_process", "append", config.get_language())
         return (
-            f"<details open><summary>思考过程</summary>\n"
+            f"<details open><summary>{thought_process}</summary>\n"
             f"<div class='thought-container' style='font-size: 13px;opacity: 0.85;"
             f"padding-left:20px;border-left:3px solid #ddd;"
             f"margin-bottom: 1em;'>\n{thought_content}</div>\n"
@@ -374,18 +450,38 @@ class BaseResponseGenerator(ABC):
         self.stop_generation = False
 
     def stop(self):
-        """Set stop flag to interrupt generation"""
+        """
+        Stop the current generation process
+
+        Args:
+            self: Instance reference
+
+        """
         self.stop_generation = True
 
     def reset(self):
-        """Reset stop flag"""
+        """
+        Reset the generator state
+
+        Args:
+            self: Instance reference
+        """
         self.stop_generation = False
 
     @abstractmethod
     async def generate_response(
         self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate response for the given request"""
+        """
+        Abstract method to generate a response to a chat request
+
+        Args:
+            self: Instance reference
+            request (ChatRequest): The chat request object containing input parameters
+            chatbot_instance: Optional reference to the chatbot instance, defaults to None
+
+        """
+
         pass
 
     async def _create_chat_completion(
@@ -395,6 +491,15 @@ class BaseResponseGenerator(ABC):
         request: ChatRequest,
         enable_thinking: bool = False,
     ):
+        """
+        Create a chat completion using the given client and messages
+
+        Args:
+            client: OpenAI API client
+            messages (List[Dict]): List of chat messages
+            request (ChatRequest): Chat request object
+            enable_thinking (bool, optional): Whether to enable thinking mode. Defaults to False
+        """
 
         if enable_thinking:
             request_messages = []
@@ -418,7 +523,14 @@ class BaseResponseGenerator(ABC):
     def _create_history_with_response(
         self, request: ChatRequest
     ) -> Tuple[List[Dict], Dict]:
-        """Create new history with user message and empty assistant response"""
+        """
+        Create conversation history including the response to the given request
+
+        Args:
+        self: Instance reference
+        request (ChatRequest): The chat request object to process
+
+        """
         new_history = list(request.history) if request.history else []
 
         user_message = {"role": "user", "content": request.message}
@@ -432,13 +544,24 @@ class BaseResponseGenerator(ABC):
     def _create_debug_info(
         self, request: ChatRequest, messages: List[Dict], model_type: str
     ) -> DebugInfo:
-        """Create debug info object"""
+        """
+        Create debug information object for the chat session
+
+        Args:
+            self: Instance reference
+            request (ChatRequest): Chat request object containing input parameters
+            messages (List[Dict]): List of message dictionaries in the chat
+            model_type (str): Type of model being used for the chat
+
+        Returns:
+            DebugInfo: Debug information object containing session details
+        """
         return DebugInfo(
             timestamp=datetime.now().isoformat(),
             session_id=self.debug_logger.current_session_id or "unknown",
             model_type=model_type,
             request_data=asdict(request),
-            processed_messages=messages,
+            requested_messages=messages,
             response_content="",
             thought_content="",
             generation_time=0.0,
@@ -452,7 +575,15 @@ class TextResponseGenerator(BaseResponseGenerator):
     async def generate_response(
         self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate text response"""
+        """
+        Generate text response for a chat request
+
+        Args:
+            self: Instance reference
+            request (ChatRequest): Chat request object containing input parameters
+            chatbot_instance: Optional chatbot instance reference, defaults to None
+
+        """
         if not request.message:
             yield [], gr.update(value="")
             return
@@ -508,16 +639,35 @@ class TextResponseGenerator(BaseResponseGenerator):
             self.reset()
 
     async def _stream_response(self, response, assistant_response):
-        """Stream response content"""
+        """
+        Stream the response generated by the API call
+
+        Args:
+            self: Instance reference
+            response: Response object returned by the API call
+            assistant_response (Dict): Assistant response dictionary
+        """
         for chunk in response:
             if chunk.choices[0].delta and chunk.choices[0].delta.content:
                 assistant_response["content"] += chunk.choices[0].delta.content
                 yield chunk
 
     async def _handle_error(self, error: Exception, message: str):
-        """Handle API errors"""
+        """
+        Handle errors during response generation
+
+        Args:
+            self: Instance reference
+            error (Exception): Error that occurred during response generation
+            message (str): User's original message
+        """
         print(f"Text response error: {error}")
-        error_msg = {"role": "assistant", "content": f"API调用失败: {error!s}"}
+        error_msg = {
+            "role": "assistant",
+            "content": alert.get("chatbot_api", "text", config.get_language()).format(
+                error
+            ),
+        }
         return [{"role": "user", "content": message}, error_msg], gr.update(value="")
 
 
@@ -527,7 +677,14 @@ class MultimodalResponseGenerator(BaseResponseGenerator):
     async def generate_response(
         self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate multimodal response"""
+        """
+        Generate multimodal response for a chat request
+
+        Args:
+            self: Instance reference
+            request (ChatRequest): Chat request object containing input parameters
+            chatbot_instance: Optional chatbot instance reference, defaults to None
+        """
         if not request.message:
             yield [], gr.update(value="")
             return
@@ -585,16 +742,35 @@ class MultimodalResponseGenerator(BaseResponseGenerator):
             self.reset()
 
     async def _stream_response(self, response, assistant_response):
-        """Stream multimodal response content"""
+        """
+        Stream the assistant's response incrementally
+
+        Args:
+            self: Instance reference
+            response: The response object from the model/API
+            assistant_response: Object to accumulate or handle the streaming response
+        """
         for chunk in response:
             if chunk.choices[0].delta and chunk.choices[0].delta.content:
                 assistant_response["content"] += chunk.choices[0].delta.content
                 yield chunk
 
     async def _handle_error(self, error: Exception, message: str):
-        """Handle multimodal API errors"""
+        """
+        Handle exceptions and errors that occur during processing
+
+        Args:
+            self: Instance reference
+            error (Exception): The exception object that was raised
+            message (str): Additional error message or context for the error
+        """
         print(f"Multimodal response error: {error}")
-        error_msg = {"role": "assistant", "content": f"多模态API调用失败: {error!s}"}
+        error_msg = {
+            "role": "assistant",
+            "content": alert.get(
+                "chatbot_api", "multimodal", config.get_language()
+            ).format(error),
+        }
         return [{"role": "user", "content": message}, error_msg], gr.update(value="")
 
 
@@ -604,7 +780,16 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
     async def generate_response(
         self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate response with thought process"""
+        """
+        Handle exceptions and errors that occur during processing.
+        This includes logging the error details, formatting user-friendly messages,
+        and potentially performing cleanup operations.
+
+        Args:
+            self: Instance reference
+            error (Exception): The exception object that was raised
+            message (str): Additional error message or context for the error
+        """
         if not request.message:
             yield [], gr.update(value="")
             return
@@ -644,7 +829,6 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
                     break
 
                 if chunk.choices[0].delta:
-                    # Extract thought and response content
                     thought_part = (
                         getattr(chunk.choices[0].delta, "reasoning_content", "") or ""
                     )
@@ -654,7 +838,6 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
                     current_response += answer_part
                     token_count += 1
 
-                    # Format response with thought process
                     formatted_response = ResponseFormatter.format_thought_response(
                         current_thought, current_response
                     )
@@ -663,7 +846,6 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
                     yield new_history, gr.update(value="")
                     await asyncio.sleep(0.01)
 
-            # Update debug info
             debug_info.thought_content = current_thought
             debug_info.response_content = current_response
             debug_info.generation_time = time.time() - start_time
@@ -683,9 +865,23 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
             self.reset()
 
     async def _handle_error(self, error: Exception, message: str):
-        """Handle thought process API errors"""
+        """
+        Handle exceptions and errors that occur during processing.
+        This includes logging the error details, formatting user-friendly messages,
+        and potentially performing cleanup operations.
+
+        Args:
+            self: Instance reference
+            error (Exception): The exception object that was raised
+            message (str): Additional error message or context for the error
+        """
         print(f"Thought response error: {error}")
-        error_msg = {"role": "assistant", "content": f"思考过程生成失败: {error!s}"}
+        error_msg = {
+            "role": "assistant",
+            "content": alert.get(
+                "chatbot_api", "thought", config.get_language()
+            ).format(error),
+        }
         return [{"role": "user", "content": message}, error_msg], gr.update(value="")
 
 
@@ -695,7 +891,20 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
     async def generate_response(
         self, request: ChatRequest, chatbot_instance=None
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate multimodal response with thought process"""
+        """
+        Generate a response using multimodal models with integrated thought process
+
+        Args:
+            self: Instance reference
+            request (ChatRequest): Chat request object containing input parameters,
+                which may include text, images, or other multimodal content
+            chatbot_instance: Optional chatbot instance reference, defaults to None
+
+        Returns:
+            AsyncGenerator yielding tuples containing:
+                - List of dictionaries representing chat messages with multimodal content
+                - gr.update object for interface updates
+        """
         if not request.message:
             yield [], gr.update(value="")
             return
@@ -716,7 +925,6 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                 chatbot_instance=chatbot_instance,
             )
 
-            # Create debug info
             debug_info = self._create_debug_info(
                 request, messages, ModelType.MULTIMODAL_THOUGHT
             )
@@ -737,7 +945,6 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                     break
 
                 if chunk.choices[0].delta:
-                    # Extract thought and response content
                     thought_part = (
                         getattr(chunk.choices[0].delta, "reasoning_content", "") or ""
                     )
@@ -747,7 +954,6 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                     current_response += answer_part
                     token_count += 1
 
-                    # Format multimodal response with thought process
                     formatted_response = ResponseFormatter.format_thought_response(
                         current_thought, current_response
                     )
@@ -756,7 +962,6 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                     yield new_history, gr.update(value="")
                     await asyncio.sleep(0.01)
 
-            # Update debug info
             debug_info.thought_content = current_thought
             debug_info.response_content = current_response
             debug_info.generation_time = time.time() - start_time
@@ -776,12 +981,28 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
             self.reset()
 
     async def _handle_error(self, error: Exception, message: str):
-        """Handle multimodal thought API errors"""
+        """
+        Handle errors encountered during multimodal response generation
+
+        Args:
+            self: Instance reference
+            error (Exception): The exception object that was raised
+            message (str): Contextual message describing where/why the error occurred
+
+        Handles:
+            - Logging error details for debugging purposes
+            - Generating user-friendly error messages
+            - Ensuring proper cleanup of resources if needed
+            - Propagating or suppressing errors based on configuration
+        """
         print(f"Multimodal thought response error: {error}")
         error_msg = {
             "role": "assistant",
-            "content": f"多模态思考过程生成失败: {error!s}",
+            "content": alert.get(
+                "chatbot_api", "multimodal_thought", config.get_language()
+            ).format(error),
         }
+
         return [{"role": "user", "content": message}, error_msg], gr.update(value="")
 
 
@@ -806,7 +1027,16 @@ class ChatBotGenerator:
         self.generators = self._initialize_generators()
 
     def _initialize_generators(self) -> Dict[str, BaseResponseGenerator]:
-        """Initialize response generators for different model types"""
+        """
+        Initialize response generators for different model types
+
+        Creates and configures appropriate appropriate response generator instances
+        for various model types (e.g., text-only, multimodal, etc.)
+
+        Returns:
+            Dict[str, BaseResponseGenerator]: A dictionary mapping model type identifiers
+            to their corresponding BaseResponseGenerator instances
+        """
         client_factory = self._create_openai_client
 
         return {
@@ -823,21 +1053,38 @@ class ChatBotGenerator:
         }
 
     def _create_openai_client(self, port: int) -> openai.Client:
-        """Create OpenAI client connection"""
+        """
+        Create and configure an OpenAI client connection
+
+        Args:
+            self: Instance reference
+            port (int): Port number to use for the OpenAI client connection
+
+        Returns:
+            openai.Client: Configured OpenAI client instance ready for API interactions
+        """
         base_url = f"http://{self.default_ip}:{port}/v1"
         return openai.Client(base_url=base_url, api_key="null")
 
     def _classifie_file_by_ext(self, file_input: List) -> Dict:
+        """
+        Classify input files by their extensions
+
+        Args:
+            self: Instance reference
+            file_input (List): List containing file-related items (e.g., file paths, file objects)
+
+        Returns:
+            Dict: A dictionary where keys are file extensions (e.g., "txt", "jpg") and values are lists of items from file_input that correspond to that extension
+        """
         classified = {"image_url": [], "video_url": [], "non_type": []}
 
         for file_path in file_input:
-            # 获取文件后缀（转为小写以便不区分大小写）
             ext = ""
             if "." in file_path:
                 ext = file_path.split(".")[-1].lower()
-                ext = f".{ext}"  # 确保后缀以点开头
+                ext = f".{ext}"
 
-            # 根据后缀分类
             if config._is_image_file(ext):
                 classified["image_url"].append(file_path)
             elif config._is_video_file(ext):
@@ -847,43 +1094,103 @@ class ChatBotGenerator:
 
         return classified
 
-    # Debug methods
     def enable_debug(self, session_id: Optional[str] = None):
-        """Enable debug mode"""
+        """
+        Enable debug mode for a specific session or globally
+
+        Args:
+            self: Instance reference
+            session_id (Optional[str]): Optional session ID to enable debug for,
+                if None, enables debug mode globally
+        """
         self.debug_logger.enable_debug(session_id)
 
     def disable_debug(self):
-        """Disable debug mode"""
+        """
+        Disable debug mode globally
+
+        Turns off debug logging for all sessions
+        """
         self.debug_logger.disable_debug()
 
     def get_debug_logs(self, session_id: Optional[str] = None) -> List[DebugInfo]:
-        """Get debug logs for a session"""
+        """
+        Retrieve debug logs for a specific session or all sessions
+
+        Args:
+            self: Instance reference
+            session_id (Optional[str]): Optional session ID to get logs for,
+                if None, returns logs for all sessions
+
+        Returns:
+            List[DebugInfo]: List of debug information objects containing session logs
+        """
         return self.debug_logger.get_session_logs(session_id)
 
     def export_debug_logs(
         self, session_id: Optional[str] = None, format: str = "json"
     ) -> str:
-        """Export debug logs"""
+        """
+        Export debug logs in the specified format
+
+        Args:
+            self: Instance reference
+            session_id (Optional[str]): Optional session ID to export logs for,
+                if None, exports logs for all sessions
+            format (str): Format to export logs in, defaults to "json"
+
+        Returns:
+            str: Exported logs as a string in the specified format
+        """
         return self.debug_logger.export_session_logs(session_id, format)
 
     def clear_debug_logs(self, session_id: Optional[str] = None):
-        """Clear debug logs"""
+        """
+        Clear debug logs for a specific session or all sessions
+
+        Args:
+            self: Instance reference
+            session_id (Optional[str]): Optional session ID to clear logs for,
+                if None, clears logs for all sessions
+        """
         self.debug_logger.clear_session_logs(session_id)
 
     def stop(self):
-        """Stop all generators"""
+        """
+        Stop all running response generators
+
+        Terminates processing for all active generators and stops any ongoing operations
+        """
         for generator in self.generators.values():
             generator.stop()
 
     def reset(self):
-        """Reset all generators"""
+        """
+        Reset all response generators to their initial state
+
+        Clears any accumulated state or context in generators, preparing them for new sessions
+        """
         for generator in self.generators.values():
             generator.reset()
 
     def _determine_model_type(
         self, model_name: str, enable_thought: bool = False
     ) -> str:
-        """Determine model type based on model name and configuration"""
+        """
+        Determine model type based on model name and configuration
+
+        Analyzes the model name and thought process configuration to classify
+        the model into an appropriate type category (e.g., text, multimodal, etc.)
+
+        Args:
+            self: Instance reference
+            model_name (str): Name or identifier of the model to classify
+            enable_thought (bool): Flag indicating if thought process generation is enabled,
+                defaults to False
+
+        Returns:
+            str: String representing the determined model type
+        """
         is_multimodal = config.is_vl_models(model_name)
         is_thought_capable = (
             True if enable_thought else config.is_thought_model(model_name)
@@ -911,7 +1218,23 @@ class ChatBotGenerator:
         port: int = 8188,
         file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate text-only response (legacy compatibility)"""
+        """
+        Generate text-only response (legacy compatibility)
+
+        Args:
+            message: User message (can contain image/video URLs for multimodal models)
+            history: Conversation history
+            model_name: Name of the model to use
+            enable_thought: Whether to enable thought process
+            role_setting: Role configuration
+            system_prompt: System prompt
+            max_length: Maximum response length
+            top_p: Nucleus sampling probability
+            temperature: Sampling temperature
+            port: Service port
+            file_input: List of file paths for multimodal content
+
+        """
         request = ChatRequest(
             message=message,
             history=history,
@@ -940,7 +1263,22 @@ class ChatBotGenerator:
         port: int = 8188,
         file_input: Optional[List[str]] = None,  # Added file_input parameter
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate multimodal response (legacy compatibility)"""
+        """
+        Generate multimodal response (legacy compatibility)
+
+        Args:
+            message: User message (can contain image/video URLs for multimodal models)
+            history: Conversation history
+            model_name: Name of the model to use
+            enable_thought: Whether to enable thought process
+            role_setting: Role configuration
+            system_prompt: System prompt
+            max_length: Maximum response length
+            top_p: Nucleus sampling probability
+            temperature: Sampling temperature
+            port: Service port
+            file_input: List of file paths for multimodal content
+        """
         request = ChatRequest(
             message=message,
             history=history,
@@ -967,9 +1305,24 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
-        file_input: Optional[List[str]] = None,  # Added file_input parameter
+        file_input: Optional[List[str]] = None,
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
-        """Generate response with thought process (legacy compatibility)"""
+        """
+        Generate response with thought process (legacy compatibility)
+
+        Args:
+            message: User message (can contain image/video URLs for multimodal models)
+            history: Conversation history
+            model_name: Name of the model to use
+            enable_thought: Whether to enable thought process
+            role_setting: Role configuration
+            system_prompt: System prompt
+            max_length: Maximum response length
+            top_p: Nucleus sampling probability
+            temperature: Sampling temperature
+            port: Service port
+            file_input: List of file paths for multimodal content
+        """
         request = ChatRequest(
             message=message,
             history=history,
@@ -1031,167 +1384,11 @@ class ChatBotGenerator:
             file_input=file_input,
         )
 
-        print("chat_request:", request, "\n")
-
         model_type = self._determine_model_type(model_name, enable_thought)
         generator = self.generators[model_type]
-
-        print("chat_generator:", generator, "\n")
-        print("model_type:", model_type, "\n")
 
         async for result in generator.generate_response(request, self):
             yield result
 
 
 chatbot = ChatBotGenerator(debug_enabled=True, debug_session_id="default_session")
-
-
-# Example usage functions for debug mode
-def example_debug_usage():
-    """Example of how to use debug mode"""
-
-    # Enable debug mode
-    chatbot.enable_debug("my_session_001")
-
-    print("Debug mode enabled. Now all chat interactions will be logged.")
-
-    # After some chat interactions, you can:
-
-    # 1. Get debug logs
-    logs = chatbot.get_debug_logs()
-    print(f"Found {len(logs)} debug entries")
-
-    # 2. Export logs as JSON
-    json_logs = chatbot.export_debug_logs(format="json")
-    with open("debug_logs.json", "w", encoding="utf-8") as f:
-        f.write(json_logs)
-
-    # 3. Export logs as text
-    txt_logs = chatbot.export_debug_logs(format="txt")
-    with open("debug_logs.txt", "w", encoding="utf-8") as f:
-        f.write(txt_logs)
-
-    # 4. Clear logs
-    # chatbot.clear_debug_logs()
-
-    # 5. Disable debug mode
-    # chatbot.disable_debug()
-
-
-def create_debug_chatbot(session_id: Optional[str] = None) -> ChatBotGenerator:
-    """
-    Create a new chatbot instance with debug mode enabled
-
-    Args:
-        session_id: Optional session identifier for organizing logs
-
-    Returns:
-        ChatBotGenerator instance with debug enabled
-    """
-    return ChatBotGenerator(debug_enabled=True, debug_session_id=session_id)
-
-
-# Debug utility functions
-def analyze_debug_logs(
-    chatbot_instance: ChatBotGenerator, session_id: Optional[str] = None
-):
-    """
-    Analyze debug logs and provide insights
-
-    Args:
-        chatbot_instance: The chatbot instance to analyze
-        session_id: Session to analyze (None for current session)
-    """
-    logs = chatbot_instance.get_debug_logs(session_id)
-
-    if not logs:
-        print("No debug logs found.")
-        return
-
-    print("\n📊 DEBUG LOG ANALYSIS")
-    print("=" * 50)
-    print(f"Total conversations: {len(logs)}")
-
-    # Model type statistics
-    model_types = {}
-    total_time = 0
-    total_tokens = 0
-
-    for log in logs:
-        model_type = log.model_type
-        model_types[model_type] = model_types.get(model_type, 0) + 1
-        total_time += log.generation_time
-        total_tokens += log.token_count
-
-    print("\nModel type usage:")
-    for model_type, count in model_types.items():
-        print(f"  - {model_type}: {count} times")
-
-    print("\nPerformance metrics:")
-    print(f"  - Total generation time: {total_time:.2f}s")
-    print(f"  - Average time per request: {total_time / len(logs):.2f}s")
-    print(f"  - Total tokens generated: {total_tokens}")
-    print(f"  - Average tokens per request: {total_tokens / len(logs):.0f}")
-
-    # Error analysis
-    errors = [log for log in logs if log.error_info]
-    if errors:
-        print(f"\nErrors found: {len(errors)}")
-        for i, error_log in enumerate(errors, 1):
-            print(f"  {i}. {error_log.timestamp}: {error_log.error_info}")
-    else:
-        print(f"\nNo errors found in {len(logs)} requests.")
-
-
-def export_debug_summary(
-    chatbot_instance: ChatBotGenerator, session_id: Optional[str] = None
-) -> str:
-    """
-    Export a summary of debug information
-
-    Args:
-        chatbot_instance: The chatbot instance
-        session_id: Session to export (None for current session)
-
-    Returns:
-        Summary string
-    """
-    logs = chatbot_instance.get_debug_logs(session_id)
-
-    if not logs:
-        return "No debug logs found."
-
-    summary = []
-    summary.append("# Debug Session Summary")
-    summary.append(f"Session ID: {logs[0].session_id}")
-    summary.append(f"Total Requests: {len(logs)}")
-    summary.append(f"Time Range: {logs[0].timestamp} to {logs[-1].timestamp}")
-
-    # Performance summary
-    total_time = sum(log.generation_time for log in logs)
-    total_tokens = sum(log.token_count for log in logs)
-
-    summary.append("\n## Performance")
-    summary.append(f"- Total Generation Time: {total_time:.2f}s")
-    summary.append(f"- Average Response Time: {total_time / len(logs):.2f}s")
-    summary.append(f"- Total Tokens: {total_tokens}")
-    summary.append(f"- Average Tokens per Request: {total_tokens / len(logs):.0f}")
-
-    # Model usage
-    model_usage = {}
-    for log in logs:
-        model_usage[log.model_type] = model_usage.get(log.model_type, 0) + 1
-
-    summary.append("\n## Model Usage")
-    for model_type, count in model_usage.items():
-        summary.append(f"- {model_type}: {count} requests")
-
-    # Recent requests
-    summary.append("\n## Recent Requests (Last 5)")
-    for log in logs[-5:]:
-        req_msg = log.request_data.get("message", "")[:50]
-        if len(log.request_data.get("message", "")) > 50:
-            req_msg += "..."
-        summary.append(f"- {log.timestamp}: {req_msg}")
-
-    return "\n".join(summary)

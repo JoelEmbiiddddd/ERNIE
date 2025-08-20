@@ -38,6 +38,7 @@ CONFIG_PATH = os.path.join(WEBUI_PATH, "config")
 DEFAULT_DATASET_PATH = os.path.join(CONFIG_PATH, "dataset.json")
 EXECUTE_PATH = os.path.join(CONFIG_PATH, "execute")
 LOAD_PARAM_PATH = os.path.join(EXECUTE_PATH, "load_param.yaml")
+CHAT_LOG_PATH = os.path.join(CONFIG_PATH, "chat_log")
 
 
 class ConfigManager:
@@ -129,8 +130,23 @@ class ConfigManager:
             ".mpeg",
         }
         self.load_param_config = self._init_load_config()
+        self.language = "zh"
 
     def _init_model_config(self):
+        """
+        Initialize model configuration settings
+
+        Sets up default configuration for available models including names, sources,
+        and local paths. Configures both standard and custom model options.
+
+        Returns:
+            Dict: A dictionary containing model configuration details with keys:
+                - "model_name": List of available model names
+                - "model_source_ernie": List of sources for ERNIE models
+                - "model_source_custom": List of sources for custom models
+                - "model_path_local": Dictionary mapping model names to their local paths
+        """
+
         return {
             "model_name": ["Customization", "ERNIE-4.5-VL-28B-A3B-Paddle"],
             "model_source_ernie": ["Local"],
@@ -141,13 +157,46 @@ class ConfigManager:
             },
         }
 
+    def get_language(self):
+        """
+        Get the current language setting
+        """
+        return self.language
+
+    def set_language(self, language):
+        """
+        Set the current language setting
+        """
+        self.language = language
+
     def _is_image_file(self, extension):
+        """
+        Check if a file extension corresponds to an image file
+
+        Args:
+            extension: File extension to check (without the leading dot)
+
+        Returns:
+            bool: True if the extension is in the list of recognized image extensions, False otherwise
+        """
         return extension in self.image_extensions
 
     def _is_video_file(self, extension):
+        """
+        Check if a file extension corresponds to a video file
+
+        Args:
+            extension: File extension to check (without the leading dot)
+        """
         return extension in self.video_extensions
 
     def _init_load_config(self):
+        """
+        Initialize and load configuration parameters from a YAML file
+
+        Attempts to load configuration from the specified YAML file path.
+        Handles backward compatibility by copying 'train_sft' configuration to 'train' if present.
+        """
         try:
             with open(LOAD_PARAM_PATH, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -163,21 +212,60 @@ class ConfigManager:
             return None
 
     def get_load_param_config(self, module):
+        """
+        Retrieve configuration parameters for a specific module
+
+        Args:
+            module: Name of the module to get configuration for
+        """
         return self.load_param_config[module]
 
     def get_file_type(self):
+        """
+        Get the type classification of processed files
+
+        Returns:
+            The file type information stored in self._files_type
+        """
         return self._files_type
 
     def get_init_dataset_elem(self):
+        """
+        Get initial dataset elements or structure
+
+        Returns:
+            The initial dataset elements stored in self._init_dataset_elem
+        """
         return self._init_dataset_elem
 
     def get_default_dataset_name(self):
+        """
+        Get the name of the default dataset
+
+        Returns:
+            str: The default dataset name stored in self._default_dataset_name
+        """
         return self._default_dataset_name
 
     def is_vl_models(self, model_name):
+        """
+        Check if a model is a vision-language (VL) model
+
+        Args:
+            model_name (str): Name of the model to check
+
+        Returns:
+            bool: True if the model is in the list of vision-language models, False otherwise
+        """
         return model_name in self._vl_models
 
     def get_dataset_info(self):
+        """
+        Get information about available datasets
+
+        Returns:
+            The dataset information stored in self._dataset_info
+        """
         return self._dataset_info
 
     def get_compute_type_by_fine_tuning(self, fine_tuning):
@@ -752,8 +840,36 @@ def is_numeric_string(s):
         return False
 
 
-def special_handling_from_config_dict(config_dict, module):
+def save_chat_log(content, save_name):
+    """
+    Save chat log content to a JSON file
 
+    Serializes the chat log content to JSON format and saves it to the specified
+    location within the chat logs directory.
+
+    Args:
+        content: The chat log content to save (must be JSON-serializable)
+        save_name (str): The filename to use for the saved chat log
+    """
+    json_content = json.dumps(content, indent=2, ensure_ascii=False)
+    save_path = os.path.join(CHAT_LOG_PATH, save_name)
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(json_content)
+
+    return save_path
+
+
+def special_handling_from_config_dict(config_dict, module):
+    """
+    Apply special handling to configuration dictionary for a specific module
+
+    Filters the configuration dictionary to include only keys relevant to the module,
+    and applies module-specific transformations (e.g., handling modality ratio).
+
+    Args:
+        config_dict (Dict): Raw configuration dictionary to process
+        module: The module for which to process the configuration
+    """
     module_load_param = config.get_load_param_config(module)
 
     user_config_dict = {
@@ -762,7 +878,7 @@ def special_handling_from_config_dict(config_dict, module):
 
     if "modality_ratio" in user_config_dict:
         user_config_dict["modality_ratio"] = 0
-        user_config_dict["modality_ratio"] = [0, user_config_dict["modality_ratio"]]
+        user_config_dict["modality_ratio"] = [1, user_config_dict["modality_ratio"]]
     return user_config_dict
 
 
@@ -840,6 +956,7 @@ def update_dataset_paths(config_dict, manager, is_preview=False):
         update_logging_dir(train_config, basic_config, "train")
         update_dataset_info(train_config, "train")
         update_dataset_info(train_config, "eval")
+        update_dataset_info(train_config, "text")
 
     if eval_config != {}:
         update_output_dir(manager, basic_config)
