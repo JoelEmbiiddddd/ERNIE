@@ -45,7 +45,7 @@
   },
   "moe_num_experts": 64,
   "moe_num_shared_experts": 0,
-  "moe_layer_start_index": 0,
+  "moe_layer_start_index": 2,
   "moe_group_experts": false,
   "moe_intermediate_size": 3584,
   "moe_capacity": [8,8,8],
