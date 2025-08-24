@@ -35,6 +35,11 @@ from paddle.incubate.nn.memory_efficient_attention import (
     BlockDiagonalCausalMask,
 )
 from paddle.distributed import in_auto_parallel_align_mode
+from paddle.distributed.auto_parallel.pipelining.schedules import (
+    parse_args,
+    return_args,
+    build_pp_layers,
+)
 
 
 from models.moe.top2_gate_auto import Top2Gate, TopKGateFusedAuto
@@ -170,13 +175,11 @@ class FusedDropoutImpl(nn.Layer):
 
 
 def is_pp_enable():
-
     mesh = fleet.auto.get_mesh()
     return "pp" in mesh.dim_names
 
 
 def global_mesh_starts_with_pp():
-
     mesh = fleet.auto.get_mesh()
     if is_pp_enable():
         return mesh.get_mesh_with_dim("pp")
@@ -185,7 +188,6 @@ def global_mesh_starts_with_pp():
 
 
 def get_triangle_upper_mask(x, mask=None):
-
     if mask is not None:
         return mask
     shape = x.shape
@@ -594,7 +596,7 @@ def get_gate(
         )
 
     lm_gate, lm_experts = None, None
-    logger.info(f"LM-experts-{lm_experts} -- experts-{experts}")
+    # logger.info(f"LM-experts-{lm_experts} -- experts-{experts}")
 
     index = 0 if config.moe_group == "dp" else 1
     ep_sub_meshes = dist.auto_parallel.api.split_mesh(get_mesh(ipp), index)
@@ -1692,7 +1694,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         config: ErnieMoEConfig
     """
 
-    def __init__(self, config: ErnieMoEConfig):
+    def __init__(self, config: ErnieMoEConfig, pp_layer_idx=None):
         if hasattr(config, "use_moe") and config.use_moe:
             if config.moe_group in {"mp", "model", "tp", "mpdp"}:
                 assert config.sequence_parallel
@@ -1713,57 +1715,39 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
 
         super().__init__(config)
         self.padding_idx = config.pad_token_id
-        self.vocab_size = config.vocab_size
-        self.hidden_size = config.hidden_size
         self.config = config
-
-        self.embed_tokens = nn.Embedding(
-            self.vocab_size,
-            self.hidden_size,
-        )
-
+        if config.pipeline_parallel_degree <= 1 or pp_layer_idx == 0:
+            self.vocab_size = config.vocab_size
+            self.hidden_size = config.hidden_size
+            self.embed_tokens = nn.Embedding(
+                self.vocab_size,
+                self.hidden_size,
+            )
+            if (
+                self.config.tensor_parallel_degree > 1
+                or self.config.pipeline_parallel_degree > 1
+            ):
+                if not in_auto_parallel_align_mode():
+                    self.embed_tokens.weight = dist.shard_tensor(
+                        self.embed_tokens.weight,
+                        get_mesh(),
+                        [dist.Replicate(), dist.Shard(1)],
+                    )
+        if config.pipeline_parallel_degree <= 1:
+            self.layers = nn.LayerList()
+            for idx in range(
+                config.num_hidden_layers - 1
+                if config.remove_tail_layer
+                else config.num_hidden_layers
+            ):
+                self.layers.append(ErnieDecoderLayerAuto(config, idx))
         if (
-            self.config.tensor_parallel_degree > 1
-            or self.config.pipeline_parallel_degree > 1
+            config.pipeline_parallel_degree <= 1
+            or pp_layer_idx == self.config.num_hidden_layers - 1
         ):
-            if not in_auto_parallel_align_mode():
-                self.embed_tokens.weight = dist.shard_tensor(
-                    self.embed_tokens.weight,
-                    get_mesh(),
-                    [dist.Replicate(), dist.Shard(1)],
-                )
-
-        layers_list = []
-
-        def get_layer_pp_info(ipp):
-            mesh = fleet.auto.get_mesh()
-            if is_pp_enable() is False:
-                return None, False
-            else:
-                pp_degree = mesh.get_dim_size("pp")
-                layer_num = (
-                    config.num_hidden_layers - 1
-                    if config.remove_tail_layer
-                    else config.num_hidden_layers
-                )
-                layer_per_stage = math.ceil(layer_num / pp_degree)
-                input_need_reshard = ipp % layer_per_stage == 0
-                return ipp // layer_per_stage, input_need_reshard
-
-        self.next_pp_stage_indexes = []
-        for layer_idx in range(
-            config.num_hidden_layers - 1
-            if config.remove_tail_layer
-            else config.num_hidden_layers
-        ):
-            pp_stage_id, input_need_reshard = get_layer_pp_info(layer_idx)
-            layers_list.append(ErnieDecoderLayerAuto(config, layer_idx, pp_stage_id))
-            if input_need_reshard:
-                self.next_pp_stage_indexes.append(layer_idx)
-        self.layers = nn.LayerList(layers_list)
-        Norm = RMSNorm if config.use_rmsnorm else LayerNorm
-
-        self.norm = Norm(config, -1)
+            Norm = RMSNorm if config.use_rmsnorm else LayerNorm
+            self.norm = Norm(config, -1)
+            self.lm_head = ErnieLMHead(config)
 
         self.gradient_checkpointing = False
 
@@ -1772,6 +1756,15 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             if self.config.sequence_parallel
             else [dist.Shard(0), dist.Replicate()]
         )
+        self.all_gate_logits = () if hasattr(self.config, "use_moe") else None
+        self.inbatch_pack_offset = None
+        self.token_type_ids = None
+        self.past_key_values = None
+        self.inbatch_pack_offset = None
+        self.inputs_embeds = None
+        self.all_hidden_states = None
+        self.all_self_attns = None
+        self.next_decoder_cache = None
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -1837,36 +1830,8 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         )
         return hidden_states
 
-    def forward(
-        self,
-        input_ids=None,
-        position_ids=None,
-        attention_mask=None,
-        inputs_embeds=None,
-        use_cache=None,
-        past_key_values=None,
-        output_attentions=False,
-        output_hidden_states=None,
-        return_dict=False,
-        inbatch_pack_offset=None,
-        token_type_ids=None,
-        **kwargs,
-    ):
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
-        output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
-        )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+    def embed_inputs(self, input_ids, attention_mask, position_ids):
+        inputs_embeds = self.inputs_embeds
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError(
@@ -1881,8 +1846,8 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 "You have to specify either decoder_input_ids or decoder_inputs_embeds"
             )
 
-        if past_key_values is None:
-            past_key_values = tuple([None] * len(self.layers))
+        if self.past_key_values is None:
+            past_key_values = tuple([None] * self.config.num_hidden_layers)
 
         seq_length_with_past = seq_length
         cache_length = 0
@@ -1906,9 +1871,9 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 global_mesh,
                 [dist.Replicate() for _ in range(len(global_mesh._shape))],
             )
-        can_use_fa = self.config.use_flash_attn
+        can_use_fa = self.config.use_flash_attn and flash_attention is not None
         can_mem_eff_attn = (
-            self.config.use_mem_eff_attn and inbatch_pack_offset is not None
+            self.config.use_mem_eff_attn and self.inbatch_pack_offset is not None
         )
         if can_use_fa or can_mem_eff_attn:
             if attention_mask is not None:
@@ -1936,127 +1901,127 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         if self.config.tensor_parallel_degree > 1:
             hidden_states = dist.reshard(hidden_states, get_mesh(0), self.placements)
 
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+        return hidden_states, attention_mask, position_ids
+
+    def decode_layer(
+        self,
+        decoder_layer,
+        hidden_states,
+        attention_mask,
+        position_ids,
+        all_router_loss=None,
+    ):
+        if self.config.output_hidden_states:
+            self.all_hidden_states += (hidden_states,)
+        has_gradient = not hidden_states.stop_gradient
+        position_ids_input = position_ids
+        attention_mask_input = attention_mask
+        token_type_ids_input = self.token_type_ids
+
+        if self.config.use_recompute and has_gradient:
+            layer_outputs = self.recompute_training(
+                decoder_layer,
+                hidden_states,
+                attention_mask_input,
+                position_ids_input,
+                self.config.output_attentions,
+                self.past_key_values,
+                self.config.use_cache,
+                self.inbatch_pack_offset,
+                token_type_ids_input,
+            )
+        else:
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask_input,
+                position_ids_input,
+                self.config.output_attentions,
+                self.past_key_values,
+                self.config.use_cache,
+                self.inbatch_pack_offset,
+                token_type_ids_input,
+            )
+
+        if isinstance(layer_outputs, (tuple, list)):
+            hidden_states = layer_outputs[0]
+        else:
+            hidden_states = layer_outputs
+
+        if self.config.use_cache:
+            self.next_decoder_cache += (
+                layer_outputs[2 if self.config.output_attentions else 1],
+            )
+
+        if self.config.output_attentions:
+            self.all_self_attns += (layer_outputs[1],)
+        if hasattr(self.config, "use_moe") and self.config.use_moe:
+            if not (self.config.use_recompute and has_gradient):
+                layer_outputs, gate_logits = layer_outputs[:-1], layer_outputs[-1]
+                self.all_gate_logits = self.all_gate_logits + (gate_logits,)
+            router_loss = layer_outputs[-1]
+            if all_router_loss is not None:
+                all_router_loss += router_loss
+        return hidden_states, all_router_loss
+
+    def forward(
+        self,
+        input_ids=None,
+        position_ids=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        use_cache=None,
+        past_key_values=None,
+        output_attentions=False,
+        output_hidden_states=None,
+        return_dict=False,
+        inbatch_pack_offset=None,
+        token_type_ids=None,
+        **kwargs,
+    ):
+        self.inputs_embeds = inputs_embeds
+        self.past_key_values = past_key_values
+        self.inbatch_pack_offset = inbatch_pack_offset
+        self.token_type_ids = token_type_ids
+        self.inbatch_pack_offset = inbatch_pack_offset
+        if use_cache is not None:
+            self.config.use_cache = use_cache
+        if return_dict is not None:
+            self.config.return_dict = return_dict
+        if output_hidden_states is not None:
+            self.config.output_hidden_states = output_hidden_states
+        if output_attentions is not None:
+            self.config.output_attentions = output_attentions
+
+        hidden_states, attention_mask, position_ids = self.embed_inputs(
+            input_ids, attention_mask, position_ids
+        )
+
+        self.all_hidden_states = () if output_hidden_states else None
+        self.all_self_attns = () if output_attentions else None
+        self.next_decoder_cache = () if use_cache else None
 
         all_router_loss = None
         if hasattr(self.config, "use_moe") and self.config.use_moe:
             all_router_loss = paddle.to_tensor(0.0)
-            all_router_loss = dist.shard_tensor(
-                all_router_loss, get_mesh(0), dist.Replicate()
-            )
-        all_gate_logits = () if hasattr(self.config, "use_moe") else None
+
         for idx, (decoder_layer) in enumerate(self.layers):
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            past_key_value = (
-                past_key_values[idx] if past_key_values is not None else None
+            hidden_states, all_router_loss = self.decode_layer(
+                decoder_layer,
+                hidden_states,
+                attention_mask,
+                position_ids,
+                all_router_loss,
             )
-
-            has_gradient = not hidden_states.stop_gradient
-            ipp = decoder_layer.ipp
-            if not is_pp_enable():
-                position_ids_input = position_ids
-                attention_mask_input = attention_mask
-                token_type_ids_input = token_type_ids
-            else:
-                if position_ids is not None:
-                    position_ids_input = dist.reshard(
-                        position_ids,
-                        get_mesh(ipp),
-                        [dist.Replicate(), dist.Replicate()],
-                    )
-                else:
-                    position_ids_input = position_ids
-                attention_mask_input = (
-                    dist.reshard(
-                        attention_mask,
-                        get_mesh(ipp),
-                        [dist.Replicate(), dist.Replicate()],
-                    )
-                    if attention_mask is not None
-                    else None
-                )
-                token_type_ids_input = (
-                    dist.reshard(
-                        token_type_ids,
-                        get_mesh(ipp),
-                        [dist.Replicate(), dist.Replicate()],
-                    )
-                    if token_type_ids is not None
-                    else None
-                )
-
-            if idx in self.next_pp_stage_indexes:
-                hidden_states = dist.reshard(
-                    hidden_states,
-                    get_mesh(ipp),
-                    self.placements,
-                )
-                if hasattr(self.config, "use_moe") and self.config.use_moe:
-                    all_router_loss = dist.reshard(
-                        all_router_loss,
-                        get_mesh(ipp),
-                        [dist.Replicate()],
-                    )
-            if self.config.use_recompute and has_gradient:
-                layer_outputs = self.recompute_training(
-                    decoder_layer,
-                    hidden_states,
-                    attention_mask_input,
-                    position_ids_input,
-                    output_attentions,
-                    past_key_value,
-                    use_cache,
-                    inbatch_pack_offset,
-                    token_type_ids_input,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask_input,
-                    position_ids_input,
-                    output_attentions,
-                    past_key_value,
-                    use_cache,
-                    inbatch_pack_offset,
-                    token_type_ids_input,
-                )
-
-            if isinstance(layer_outputs, (tuple, list)):
-                hidden_states = layer_outputs[0]
-            else:
-                hidden_states = layer_outputs
-
-            if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
-            if hasattr(self.config, "use_moe") and self.config.use_moe:
-                if not (self.config.use_recompute and has_gradient):
-                    layer_outputs, gate_logits = layer_outputs[:-1], layer_outputs[-1]
-                    all_gate_logits = all_gate_logits + (gate_logits,)
-                router_loss = layer_outputs[-1]
-                all_router_loss += router_loss
 
         if use_cache and not (hasattr(self.config, "use_moe") and self.config.use_moe):
             hidden_states = paddle.unsqueeze(hidden_states[:, -1, :], 1)
 
-        if self.config.pipeline_parallel_degree > 1:
-            hidden_states = dist.reshard(
-                hidden_states,
-                get_mesh(-1),
-                self.placements,
-            )
         hidden_states = self.norm(hidden_states)
 
         if output_hidden_states:
-            all_hidden_states += (hidden_states,)
+            self.all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = self.next_decoder_cache if use_cache else None
 
         if not return_dict:
             return tuple(
@@ -2064,21 +2029,21 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 for v in [
                     hidden_states,
                     next_cache,
-                    all_hidden_states,
-                    all_self_attns,
+                    self.all_hidden_states,
+                    self.all_self_attns,
                     all_router_loss,
-                    all_gate_logits,
+                    self.all_gate_logits,
                 ]
                 if v is not None
             )
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
+            hidden_states=self.all_hidden_states,
+            attentions=self.all_self_attns,
             cross_attentions=None,
             router_loss=all_router_loss,
-            gate_logits=all_gate_logits,
+            gate_logits=self.all_gate_logits,
         )
 
 
@@ -2111,19 +2076,21 @@ class ErniePretrainingCriterion(paddle.nn.Layer):
         else:
             loss, loss_sum = res, None
         if router_loss is not None and not in_auto_parallel_align_mode():
-            global_mesh = global_mesh_starts_with_pp()
-            if self.config.pipeline_parallel_degree > 1:
-                loss = dist.reshard(
-                    loss,
-                    global_mesh,
-                    [dist.Replicate() for _ in range(len(global_mesh._shape))],
-                )
-                router_loss = dist.reshard(
-                    router_loss,
-                    global_mesh,
-                    [dist.Replicate() for _ in range(len(global_mesh._shape))],
-                )
+            # global_mesh = global_mesh_starts_with_pp()
+            # if self.config.pipeline_parallel_degree > 1:
+            #     loss = dist.reshard(
+            #         loss,
+            #         global_mesh,
+            #         [dist.Replicate() for _ in range(len(global_mesh._shape))],
+            #     )
+            #     router_loss = dist.reshard(
+            #         router_loss,
+            #         global_mesh,
+            #         [dist.Replicate() for _ in range(len(global_mesh._shape))],
+            #     )
             loss = loss + router_loss - router_loss.detach()
+        if not self.return_tuple:
+            return loss
         return loss, loss_sum
 
     def loss_impl(self, prediction_scores, masked_lm_labels):
@@ -2267,6 +2234,34 @@ class ErnieLMHead(nn.Layer):
         )
 
 
+class ErnieModelAutoPP(ErnieModelAuto):
+    def __init__(self, config, layer_idx=0, ipp=0):
+        super().__init__(config, layer_idx)
+        self.layer = ErnieDecoderLayerAuto(config, layer_idx, ipp)
+        self.config.use_cache = False
+
+    def forward(self, args):
+        hidden_states, attention_mask, position_ids = parse_args(args)
+        if self.layer.layer_idx == 0:
+            hidden_states, attention_mask, position_ids = self.embed_inputs(
+                hidden_states, attention_mask, position_ids
+            )
+        hidden_states, _ = self.decode_layer(
+            self.layer, hidden_states, attention_mask, position_ids
+        )
+        if self.layer.layer_idx == self.config.num_hidden_layers - 1:
+            hidden_states = self.norm(hidden_states)
+            logits = self.lm_head(hidden_states)
+            ret_args = return_args(logits=logits)
+        else:
+            ret_args = return_args(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+            )
+        return ret_args
+
+
 class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
     """
     ErnieForCausalLMAuto is the model class for causal language modeling.
@@ -2296,9 +2291,7 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
         )
         config.initializer_range = new_initializer_range
         self.config = config
-        self.ernie = ErnieModelAuto(config)
-        self.lm_head = ErnieLMHead(config)
-        self.criterion = ErniePretrainingCriterion(config)
+        self.criterion = ErniePretrainingCriterion(config, False)
 
         self.tie_weights()
 
@@ -2309,6 +2302,11 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
                 logger.info("Use normal RMSNorm")
         else:
             logger.info("Use normal LayerNorm")
+        if config.pipeline_parallel_degree > 1:
+            self.layers = build_pp_layers(config, ErnieModelAutoPP)
+        else:
+            self.ernie = ErnieModelAuto(config)
+            self.lm_head = ErnieLMHead(config)
 
     def _post_init(self, original_init, *args, **kwargs):
         """
@@ -2322,9 +2320,17 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
             if w.is_dist() and w._is_initialized():
                 w.scale_(factor)
 
+        if self.config.pipeline_parallel_degree > 1:
+            decoder_layers = []
+            for layer in self.layers:
+                if isinstance(layer, ErnieModelAutoPP):
+                    decoder_layers.append(layer.layer)
+            layers = decoder_layers
+        else:
+            layers = self.ernie.layers
         if hasattr(self.config, "use_moe") and self.config.use_moe:
             with paddle.no_grad():
-                for left in self.ernie.layers:
+                for left in layers:
                     if isinstance(
                         left.self_attn.o_proj,
                         (MOELayerAuto),
@@ -2346,7 +2352,7 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
                         scale_by_factor_if_valid(left.mlp.down_proj.weight)
         else:
             with paddle.no_grad():
-                for left in self.ernie.layers:
+                for left in layers:
                     scale_by_factor_if_valid(left.self_attn.o_proj.weight)
                     scale_by_factor_if_valid(left.mlp.down_proj.weight)
 
