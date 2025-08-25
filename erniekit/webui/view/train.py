@@ -618,3 +618,6 @@ def build(manager):
         text_dataset_elem["row_components"],
     )
     control.train_reaction(manager, CommandRunner(), "train")
+    control.train_update_by_basic_model_name_group(
+        manager, train_dataset_elem, eval_dataset_elem, text_dataset_elem
+    )

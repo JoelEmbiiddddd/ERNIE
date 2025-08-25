@@ -35,7 +35,6 @@ WEBUI_PATH = os.path.dirname(os.path.abspath(__file__))
 ERNIEKIT_PATH = os.path.dirname(WEBUI_PATH)
 ROOT_PATH = os.path.dirname(ERNIEKIT_PATH)
 CONFIG_PATH = os.path.join(WEBUI_PATH, "config")
-DEFAULT_DATASET_PATH = os.path.join(CONFIG_PATH, "dataset.json")
 EXECUTE_PATH = os.path.join(CONFIG_PATH, "execute")
 LOAD_PARAM_PATH = os.path.join(EXECUTE_PATH, "load_param.yaml")
 CHAT_LOG_PATH = os.path.join(CONFIG_PATH, "chat_log")
@@ -877,7 +876,6 @@ def special_handling_from_config_dict(config_dict, module):
     }
 
     if "modality_ratio" in user_config_dict:
-        user_config_dict["modality_ratio"] = 0
         user_config_dict["modality_ratio"] = [1, user_config_dict["modality_ratio"]]
     return user_config_dict
 
@@ -1009,7 +1007,7 @@ def mkdir_output_dir(manager, is_preview):
     return os.path.join(base_output_dir, dir_name)
 
 
-def extract_dataset_and_join(json_str, col_key):
+def extract_dataset_and_join(json_input, col_key):
     """
     Extract values from a JSON string based on a specified column key and join them into a single string.
 
@@ -1021,7 +1019,14 @@ def extract_dataset_and_join(json_str, col_key):
         str: A comma-separated string of values extracted from the specified column. Returns empty string on failure.
     """
     try:
-        json_data = json.loads(json_str)
+        if isinstance(json_input, dict):
+            json_data = json_input
+        else:
+            try:
+                json_data = json.loads(json_input)
+            except Exception:
+                json_data = ast.literal_eval(json_input)
+
         column_values = [str(item.get(col_key, "")) for item in json_data.values()]
         return ",".join(column_values)
     except Exception:

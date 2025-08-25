@@ -263,6 +263,7 @@ class Manager:
                     gr.HTML,
                     gr.File,
                     gr.DownloadButton,
+                    gr.Group,
                 ),
             )
         ]
@@ -435,6 +436,7 @@ class Manager:
                     gr.HTML,
                     gr.State,
                     gr.File,
+                    gr.Group,
                 ),
             ):
                 elem.change(

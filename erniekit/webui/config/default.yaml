@@ -41,7 +41,7 @@ train_sft:
   max_seq_len: 8192
   num_samples_each_epoch: 6000000
   max_prompt_len: 2048
-  modality_ratio: 0
+  modality_ratio: 1
   ### model
   lora_rank: 32
   lora_alpha: -1
@@ -128,12 +128,11 @@ train_dpo:
   save_strategy: steps
   save_total_limit: 5
 train_vl_sft:
-  ### data
-  train_dataset: ['demo_sft_train']
-  eval_dataset: ['demo_sft_eval']
-  text_dataset: ['demo_sft_train']
+  train_dataset: ['sft_vl-train_demo1']
+  eval_dataset:
+  text_dataset:
   max_seq_len: 8192
-  num_samples_each_epoch: 6000000
+  num_samples_each_epoch: 10000000
   max_prompt_len: 2048
   modality_ratio: 0
   ### model
@@ -146,31 +145,31 @@ train_vl_sft:
   stage: VL-SFT
   recompute: False
   num_train_epochs: 1
-  max_steps: 100
+  max_steps: 8000
   batch_size: 1
-  gradient_accumulation_steps: 8
-  use_sp_callback: False
+  gradient_accumulation_steps: 4
+  use_sp_callback: True
   # dataloader
   dataloader_num_workers: 1
   distributed_dataloader: False
   # optimizer
   lr_scheduler_type: cosine
-  learning_rate: 3.0e-4
-  min_lr: 0.0
+  learning_rate: 1.0e-05
+  min_lr: 1.0e-06
   layerwise_lr_decay_bound: 1.0
-  warmup_steps: 20
+  warmup_steps: 100
   optim: adamw
   offload_optim: True
-  weight_decay: 0.01
+  weight_decay: 0.1
   adam_epsilon: 1.0e-8
   adam_beta1: 0.9
   adam_beta2: 0.95
   release_grads: True
-  scale_loss: 32768
+  scale_loss: 4096
   # output
   logging_steps: 1
   eval_steps: 100
-  save_steps: 10
+  save_steps: 10000
   evaluation_strategy: steps
   save_strategy: steps
   save_total_limit: 5

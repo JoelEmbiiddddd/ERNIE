@@ -76,7 +76,7 @@ def eval_reaction(manager, runner, module):
     """
 
     setup_command_buttons(manager, runner, module)
-    handle_dataset_preview(manager, module, "eval")
+    demo_load_handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
 
 
@@ -124,16 +124,242 @@ def train_reaction(manager, runner, module):
 
     """
     setup_command_buttons(manager, runner, module)
-    setup_update_stage(manager)
     train_epochs_change(manager)
-    handle_dataset_preview(manager, module, "train")
+    demo_load_handle_dataset_preview(manager, module, "train")
     setup_save_dataset_btn_update(manager, module, "train")
-    handle_dataset_preview(manager, module, "eval")
+    demo_load_handle_dataset_preview(manager, module, "eval")
     setup_save_dataset_btn_update(manager, module, "eval")
-    handle_dataset_preview(manager, module, "text")
+    demo_load_handle_dataset_preview(manager, module, "text")
     setup_save_dataset_btn_update(manager, module, "text")
     train_plot_and_progress_reaction(manager, runner)
     train_dataset_row_show_up(manager)
+    setup_update_stage(manager)
+
+
+def train_update_by_basic_model_name_group(
+    manager, train_dataset_elem, eval_dataset_elem, text_dataset_elem
+):
+    train_update_by_basic_model_name(
+        manager,
+        "train",
+        train_dataset_elem["row_components"],
+        train_dataset_elem["form_data"],
+    )
+    # train_update_by_basic_model_name(manager, "eval", eval_dataset_elem["row_components"], eval_dataset_elem["form_data"])
+    # train_update_by_basic_model_name(manager, "text", text_dataset_elem["row_components"], text_dataset_elem["form_data"])
+    train_update_by_best_config(
+        manager,
+        "train",
+        train_dataset_elem["row_components"],
+        train_dataset_elem["form_data"],
+    )
+
+
+def train_update_by_best_config(manager, elem_type, row_components, form_data_state):
+    best_config = manager.get_elem_by_id("basic", "best_config")
+
+    def switch_dataset_by_best_config(best_config_value, current_form_data):
+        user_config_dataset = config.get_default_user_dict(
+            f"train_{best_config_value.lower()}", f"{elem_type}_dataset"
+        )
+        return update_dataset_row_components(
+            user_config_dataset, current_form_data, row_components, False
+        )
+
+    all_components = []
+    for row in row_components:
+        all_components.extend(row)
+
+    best_config.change(
+        fn=switch_dataset_by_best_config,
+        inputs=[best_config, form_data_state],
+        outputs=[form_data_state] + all_components,
+    )
+
+
+def train_update_by_basic_model_name(
+    manager, elem_type, row_components, form_data_state
+):
+    model_name = manager.get_elem_by_id("basic", "model_name")
+    stage = manager.get_elem_by_id("train", "stage")
+    dataset_group = manager.get_elem_by_id("train", f"{elem_type}_dataset_group")
+
+    def switch_dataset_by_model_name(
+        model_name_value, stage_value, current_form_data, dataset_group
+    ):
+        is_vl_model = config.is_vl_models(model_name_value)
+
+        if is_vl_model:
+            user_config_dataset = config.get_default_user_dict(
+                "train_vl_sft", f"{elem_type}_dataset"
+            )
+        elif stage_value == "sft" or stage_value == "dpo":
+            user_config_dataset = config.get_default_user_dict(
+                f"train_{stage_value}", f"{elem_type}_dataset"
+            )
+        else:
+            user_config_dataset = config.get_default_user_dict(
+                "train_sft", f"{elem_type}_dataset"
+            )
+
+        update_comp = update_dataset_row_components(
+            user_config_dataset, current_form_data, row_components, is_vl_model
+        )
+
+        return update_comp + [current_form_data]
+
+    all_components = []
+    for row in row_components:
+        all_components.extend(row)
+
+    model_name.change(
+        fn=switch_dataset_by_model_name,
+        inputs=[model_name, stage, form_data_state, dataset_group],
+        outputs=[form_data_state] + all_components + [dataset_group],
+    )
+
+
+def update_dataset_row_components(
+    user_dataset_config, current_form_data, train_row_components, is_vl_model
+):
+
+    if (
+        not user_dataset_config
+        or user_dataset_config == ""
+        or user_dataset_config == []
+    ):
+        updates = []
+        for _, _ in enumerate(train_row_components):
+            updates.extend(
+                [
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                ]
+            )
+        return [current_form_data] + updates
+
+    dataset_config_info = config.get_dataset_info()
+
+    default = user_dataset_config[0] if user_dataset_config else ""
+
+    if current_form_data is None:
+        current_form_data = {}
+
+    visible_rows = (
+        len([k for k in current_form_data.keys()]) if current_form_data else 0
+    )
+
+    if visible_rows > 1:
+        pass
+    else:
+        required_rows = len(user_dataset_config)
+        target_rows = max(visible_rows, required_rows, 1)
+
+        current_form_data.clear()
+
+        for i in range(target_rows):
+            row_key = str(i)
+
+            if i < len(user_dataset_config):
+                current_dataset = user_dataset_config[i]
+            else:
+                current_dataset = default
+
+            dataset_info = dataset_config_info.get(current_dataset, {})
+
+            current_form_data[row_key] = {
+                "col0": current_dataset,
+                "col1": dataset_info.get("type"),
+                "col2": dataset_info.get("path"),
+                "col3": dataset_info.get("prob"),
+            }
+
+    updates = []
+    for i, row in enumerate(train_row_components):
+        row_key = str(i)
+
+        if row_key in current_form_data:
+            row_data = current_form_data[row_key]
+            updates.extend(
+                [
+                    gr.update(value=row_data["col0"], interactive=True),
+                    gr.update(value=row_data["col1"], interactive=not is_vl_model),
+                    gr.update(value=row_data["col2"], interactive=True),
+                    gr.update(value=row_data["col3"], interactive=True),
+                ]
+            )
+        else:
+            updates.extend(
+                [
+                    gr.update(value="", interactive=True),
+                    gr.update(value="", interactive=True),
+                    gr.update(value="", interactive=True),
+                    gr.update(value="", interactive=True),
+                ]
+            )
+
+    return [current_form_data] + updates
+
+
+def train_vl_reaction_for_dataset_row(
+    manager, train_row_components, eval_row_components, text_row_components
+):
+    """
+    Handle reactions for vision-language dataset rows in training/evaluation
+
+    Manages UI or state reactions for dataset rows containing vision-language content,
+    coordinating training, evaluation, and text components for proper display or processing.
+
+    Args:
+        manager: The training or dataset manager handling the state
+        train_row_components: Components related to training dataset rows
+        eval_row_components: Components related to evaluation dataset rows
+        text_row_components: Text-specific components within dataset rows
+    """
+    model_name = manager.get_elem_by_id("basic", "model_name")
+
+    def train_vl_reaction_handler(model_name_value):
+        is_vl_model = config.is_vl_models(model_name_value)
+
+        type_dropdown_updates = []
+
+        for row in train_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(gr.update(interactive=not is_vl_model))
+
+        for row in eval_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(
+                    gr.update(interactive=not is_vl_model, value="erniekit")
+                )
+
+        for row in text_row_components:
+            if len(row) > 1:
+                type_dropdown_updates.append(
+                    gr.update(interactive=not is_vl_model, value="erniekit")
+                )
+
+        return type_dropdown_updates
+
+    type_dropdown_outputs = []
+    for row in train_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+    for row in eval_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+    for row in text_row_components:
+        if len(row) > 1:
+            type_dropdown_outputs.append(row[1])
+
+    manager.demo.load(
+        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
+    )
+    model_name.change(
+        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
+    )
 
 
 def change_language_in_config(manager):
@@ -274,65 +500,6 @@ def chat_download_log(manager):
     )
 
 
-def train_vl_reaction_for_dataset_row(
-    manager, train_row_components, eval_row_components, text_row_components
-):
-    """
-    Handle reactions for vision-language dataset rows in training/evaluation
-
-    Manages UI or state reactions for dataset rows containing vision-language content,
-    coordinating training, evaluation, and text components for proper display or processing.
-
-    Args:
-        manager: The training or dataset manager handling the state
-        train_row_components: Components related to training dataset rows
-        eval_row_components: Components related to evaluation dataset rows
-        text_row_components: Text-specific components within dataset rows
-    """
-    model_name = manager.get_elem_by_id("basic", "model_name")
-
-    def train_vl_reaction_handler(model_name_value):
-        is_vl_model = config.is_vl_models(model_name_value)
-
-        type_dropdown_updates = []
-
-        for row in train_row_components:
-            if len(row) > 1:
-                type_dropdown_updates.append(gr.update(interactive=not is_vl_model))
-
-        for row in eval_row_components:
-            if len(row) > 1:
-                type_dropdown_updates.append(
-                    gr.update(interactive=not is_vl_model, value="erniekit")
-                )
-
-        for row in text_row_components:
-            if len(row) > 1:
-                type_dropdown_updates.append(
-                    gr.update(interactive=not is_vl_model, value="erniekit")
-                )
-
-        return type_dropdown_updates
-
-    type_dropdown_outputs = []
-    for row in train_row_components:
-        if len(row) > 1:
-            type_dropdown_outputs.append(row[1])
-    for row in eval_row_components:
-        if len(row) > 1:
-            type_dropdown_outputs.append(row[1])
-    for row in text_row_components:
-        if len(row) > 1:
-            type_dropdown_outputs.append(row[1])
-
-    manager.demo.load(
-        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
-    )
-    model_name.change(
-        fn=train_vl_reaction_handler, inputs=[model_name], outputs=type_dropdown_outputs
-    )
-
-
 def basic_vl_reaction_by_model_name(manager):
     """
     Handle basic vision-language reactions based on the selected model name
@@ -344,7 +511,6 @@ def basic_vl_reaction_by_model_name(manager):
         manager: The model or state manager containing the selected model information
     """
     model_name = manager.get_elem_by_id("basic", "model_name")
-    fine_tuning = manager.get_elem_by_id("basic", "fine_tuning")
     compute_type = manager.get_elem_by_id("basic", "compute_type")
     virtual_pp_degree = manager.get_elem_by_id("basic", "virtual_pp_degree")
     pp_need_data_degree = manager.get_elem_by_id("basic", "pp_need_data_degree")
@@ -354,7 +520,6 @@ def basic_vl_reaction_by_model_name(manager):
 
         if config.is_vl_models(model_name_value):
             return (
-                gr.update(interactive=False, value="Full"),
                 gr.update(interactive=False, value="bf16"),
                 gr.update(visible=True),
                 gr.update(visible=True),
@@ -365,7 +530,6 @@ def basic_vl_reaction_by_model_name(manager):
             gr.update(interactive=True),
             gr.update(interactive=True),
             gr.update(visible=False),
-            gr.update(visible=False),
             gr.update(interactive=True),
         )
 
@@ -373,7 +537,6 @@ def basic_vl_reaction_by_model_name(manager):
         fn=update_basic_vl_components,
         inputs=model_name,
         outputs=[
-            fine_tuning,
             compute_type,
             virtual_pp_degree,
             pp_need_data_degree,
@@ -1309,7 +1472,7 @@ def setup_stop_button(manager, runner, module):
         stop_btn.click(fn=stop_current_process, inputs=[], outputs=output_text)
 
 
-def handle_dataset_preview(manager, module, elem_type):
+def demo_load_handle_dataset_preview(manager, module, elem_type):
     dataset_path = manager.get_elem_by_id(module, f"{elem_type}_dataset_path")
 
     def init_dataset_path():
@@ -2327,4 +2490,5 @@ def create_dynamic_form_component(
         "row_components": row_components,
         "save_dataset_btn": save_dataset_btn,
         "dataset_btn": dataset_btn,
+        "form_data": form_data,
     }
