@@ -13,15 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-export NNODES=1
-export PADDLE_TRAINERS_NUM=1
-unset PADDLE_ELASTIC_JOB_ID
-unset PADDLE_TRAINER_ENDPOINTS
-unset DISTRIBUTED_TRAINER_ENDPOINTS
-unset FLAGS_START_PORT
-unset PADDLE_ELASTIC_TIMEOUT
-nnodes=$PADDLE_TRAINERS_NUM
-rank=$PADDLE_TRAINER_ID
 
 export CUDA_MODULE_LOADING=LAZY
 export CUDA_DEVICE_MAX_CONNECTIONS=1
@@ -44,34 +35,14 @@ else
     export FLAGS_flash_attn_version=2
 fi
 
-# nnodes=7
-# START_RANK=0
-# END_RANK=$nnodes
-# if [[ $rank -lt $START_RANK ]]; then
-#     exit 0
-# fi
-
-# if [[ $rank -ge $END_RANK ]]; then
-#     exit 0
-# fi
-rank=$(($rank-$START_RANK))
-nnodes=$(($END_RANK-$START_RANK))
-master=`cat /root/paddlejob/workspace/hostfile | head -n $(($START_RANK+1)) | tail -n 1 | awk '{print $1}'`
-port=36677
 
 export FLAGS_enable_moe_utils=true
 
 
 export PYTHONPATH=$PYTHONPATH:./ernie
 
-rm -rf output
-rm -rf core.*
-
 python -m paddle.distributed.launch \
     --log_dir output/paddle_distributed_logs \
-    --master $master:$port \
-    --nnodes $nnodes \
-    --rank $rank \
     --run_mode=collective \
     ${script:-ernie/pretrain_auto.py}  \
     --config yamls/pretrain_96_auto.yaml

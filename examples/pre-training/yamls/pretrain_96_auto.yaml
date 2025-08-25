@@ -35,7 +35,7 @@ trainer_args:
     eval_steps: 1000
     eval_iters: -1
     save_steps: 100
-    max_steps: 10
+    max_steps: 100
     adam_beta1: 0.9
     adam_beta2: 0.95
     adam_epsilon: 1e-8
@@ -87,7 +87,7 @@ trainer_args:
     ignore_load_lr_and_optim: False
     metrics_output_path: ./output/paddle_distributed_logs/
 
-    use_moe: true
+    use_moe: True
     moe_group: mp
     log_global_grad_norm: True
     enable_optimizer_timer: False

@@ -35,12 +35,6 @@ from paddle.incubate.nn.memory_efficient_attention import (
     BlockDiagonalCausalMask,
 )
 from paddle.distributed import in_auto_parallel_align_mode
-from paddle.distributed.auto_parallel.pipelining.schedules import (
-    parse_args,
-    return_args,
-    build_pp_layers,
-)
-
 
 from models.moe.top2_gate_auto import Top2Gate, TopKGateFusedAuto
 
@@ -596,7 +590,7 @@ def get_gate(
         )
 
     lm_gate, lm_experts = None, None
-    # logger.info(f"LM-experts-{lm_experts} -- experts-{experts}")
+    logger.info(f"LM-experts-{lm_experts} -- experts-{experts}")
 
     index = 0 if config.moe_group == "dp" else 1
     ep_sub_meshes = dist.auto_parallel.api.split_mesh(get_mesh(ipp), index)
@@ -2076,18 +2070,6 @@ class ErniePretrainingCriterion(paddle.nn.Layer):
         else:
             loss, loss_sum = res, None
         if router_loss is not None and not in_auto_parallel_align_mode():
-            # global_mesh = global_mesh_starts_with_pp()
-            # if self.config.pipeline_parallel_degree > 1:
-            #     loss = dist.reshard(
-            #         loss,
-            #         global_mesh,
-            #         [dist.Replicate() for _ in range(len(global_mesh._shape))],
-            #     )
-            #     router_loss = dist.reshard(
-            #         router_loss,
-            #         global_mesh,
-            #         [dist.Replicate() for _ in range(len(global_mesh._shape))],
-            #     )
             loss = loss + router_loss - router_loss.detach()
         if not self.return_tuple:
             return loss
@@ -2238,10 +2220,9 @@ class ErnieModelAutoPP(ErnieModelAuto):
     def __init__(self, config, layer_idx=0, ipp=0):
         super().__init__(config, layer_idx)
         self.layer = ErnieDecoderLayerAuto(config, layer_idx, ipp)
-        self.config.use_cache = False
 
     def forward(self, args):
-        hidden_states, attention_mask, position_ids = parse_args(args)
+        hidden_states, attention_mask, position_ids = (*args, None, None)[:3]
         if self.layer.layer_idx == 0:
             hidden_states, attention_mask, position_ids = self.embed_inputs(
                 hidden_states, attention_mask, position_ids
@@ -2252,14 +2233,9 @@ class ErnieModelAutoPP(ErnieModelAuto):
         if self.layer.layer_idx == self.config.num_hidden_layers - 1:
             hidden_states = self.norm(hidden_states)
             logits = self.lm_head(hidden_states)
-            ret_args = return_args(logits=logits)
+            return logits
         else:
-            ret_args = return_args(
-                hidden_states=hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-            )
-        return ret_args
+            return hidden_states
 
 
 class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
@@ -2303,7 +2279,22 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
         else:
             logger.info("Use normal LayerNorm")
         if config.pipeline_parallel_degree > 1:
-            self.layers = build_pp_layers(config, ErnieModelAutoPP)
+            self.layers = nn.LayerList()
+            pp_degree = config.pipeline_parallel_degree
+            chunk_size = (
+                config.num_hidden_layers // pp_degree // config.virtual_pp_degree
+            )
+            current_rank = (
+                fleet.get_hybrid_communicate_group().get_pipe_parallel_group().rank
+                % pp_degree
+            )
+            for idx in range(config.num_hidden_layers):
+                target_stage = (idx // chunk_size) % pp_degree
+                if target_stage == current_rank:
+                    stage_id = (idx // chunk_size) % pp_degree
+                    self.layers.append(ErnieModelAutoPP(config, idx, stage_id))
+                else:
+                    self.layers.append(nn.Identity())
         else:
             self.ernie = ErnieModelAuto(config)
             self.lm_head = ErnieLMHead(config)

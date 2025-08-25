@@ -52,7 +52,7 @@ from paddleformers.utils.batch_sampler import (
 from paddleformers.trainer.utils import add_start_docstrings
 from paddleformers.trainer.trainer_callback import PrinterCallback
 from paddle.distributed import fleet
-from paddle.distributed.auto_parallel.pipelining.schedules import get_pp_schedule
+from paddle.distributed.auto_parallel.pipelining.schedules import get_pipeline_schedule
 from typing import Any, Dict, Union
 import paddle.distributed as dist
 
@@ -378,7 +378,7 @@ class AutoPretrainingTrainer(AutoTrainer):
         if self.args.pipeline_parallel_degree > 1:
             if self.criterion is None:
                 self.criterion = self.model.criterion
-            self.pp_schedule = get_pp_schedule(
+            self.pp_schedule = get_pipeline_schedule(
                 model,
                 self.args.gradient_accumulation_steps,
                 self.criterion,
