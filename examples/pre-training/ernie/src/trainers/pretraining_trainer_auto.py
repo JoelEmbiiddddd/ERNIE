@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 import time
 import math
 import logging
-from functools import partial
 
 
 import paddle
@@ -53,6 +52,8 @@ from paddleformers.utils.batch_sampler import (
 from paddleformers.trainer.utils import add_start_docstrings
 from paddleformers.trainer.trainer_callback import PrinterCallback
 from paddle.distributed import fleet
+from paddle.distributed.auto_parallel.pipelining.schedules import get_pipeline_schedule
+from typing import Any, Dict, Union
 import paddle.distributed as dist
 
 
@@ -374,6 +375,76 @@ class AutoPretrainingTrainer(AutoTrainer):
         self.model_numel = numel_tensor.item() // self.args.dataset_world_size
 
         self.pop_callback(PrinterCallback)
+        if self.args.pipeline_parallel_degree > 1:
+            if self.criterion is None:
+                self.criterion = self.model.criterion
+            self.pp_schedule = get_pipeline_schedule(
+                model,
+                self.args.gradient_accumulation_steps,
+                self.criterion,
+                self.args.pipeline_schedule_mode,
+                self.args.pipeline_parallel_degree,
+                self.comm_group_in_pp,
+            )
+            self.args.per_device_train_batch_size = (
+                self.args.per_device_train_batch_size
+                * self.args.gradient_accumulation_steps
+            )
+            self.args.gradient_accumulation_steps = 1
+
+    def compute_pipeline_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+        Subclass and override for custom behavior.
+        """
+        if self.criterion is not None:
+            if "labels" in inputs:
+                labels = inputs.pop("labels")
+            elif "start_positions" in inputs and "end_positions" in inputs:
+                labels = (inputs.pop("start_positions"), inputs.pop("end_positions"))
+            elif self.args.label_names is not None:
+                labels = []
+                for label in self.label_names:
+                    labels.append(inputs.pop(label))
+                labels = tuple(labels)
+            elif "generator_labels" in inputs:
+                labels = inputs["generator_labels"]
+        else:
+            labels = None
+
+        pp_rank = self.comm_group_in_pp.rank
+        losses = []
+        if pp_rank == 0:
+            self.pp_schedule.step(**inputs)
+        elif pp_rank == self.args.pipeline_parallel_degree - 1:
+            self.pp_schedule.step(target=labels, losses=losses)
+        else:
+            self.pp_schedule.step()
+
+        final_loss = None
+        if len(losses) != 0:
+            final_loss = paddle.stack(losses).mean()
+
+        return final_loss
+
+    def dynamic_auto_parallel_pipeline_training(
+        self, model: nn.Layer, inputs: Dict[str, Union[paddle.Tensor, Any]]
+    ) -> paddle.Tensor:
+        assert (
+            self.args.pipeline_parallel_degree > 1
+        ), "pipeline_parallel_degree must be greater than 1."
+        with self.autocast_smart_context_manager():
+            loss = self.compute_pipeline_loss(model, inputs)
+
+        return loss
+
+    def dynamic_training(
+        self, model: nn.Layer, inputs: Dict[str, Union[paddle.Tensor, Any]]
+    ) -> paddle.Tensor:
+        if self.args.pipeline_parallel_degree > 1:
+            return self.dynamic_auto_parallel_pipeline_training(model, inputs)
+        else:
+            return super().dynamic_training(model, inputs)
 
     def autocast_smart_context_manager(self):
 
@@ -474,11 +545,6 @@ class AutoPretrainingTrainer(AutoTrainer):
 
         if self.args.need_data and self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
-        _DataLoader = partial(
-            DistDataLoaderAuto,
-            need_data=self.args.need_data,
-            pp_broadcast=True,
-        )
 
         train_dataset = self.train_dataset
         if self._is_iterable_dataset(train_dataset):
@@ -494,7 +560,7 @@ class AutoPretrainingTrainer(AutoTrainer):
             train_sampler = self._get_train_sampler()
         else:
             train_sampler = None
-        return _DataLoader(
+        return DistDataLoaderAuto(
             train_dataset,
             batch_sampler=train_sampler,
             collate_fn=self.data_collator,
@@ -632,25 +698,20 @@ class AutoPretrainingTrainer(AutoTrainer):
         meshes = []
         if self.args.pipeline_parallel_degree > 1:
             # input_ids
-            meshes.append(
-                [
-                    _get_mesh(0),
-                    _get_mesh(-1),
-                ]
-            )
+            meshes.append(_get_mesh(0))
             # labels
             meshes.append(_get_mesh(self.args.pipeline_parallel_degree - 1))
         else:
             meshes.append(_get_mesh(0))
         return meshes
 
-    def _wrap_for_dist_loader(self, train_dataloader):
-        self.dense_tensor_idx = None
+    def _wrap_for_dist_loader(self, train_dataloader, dense_tensor_idx=None):
+        self.dense_tensor_idx = dense_tensor_idx
         dist_loader = dist.shard_dataloader(
             dataloader=train_dataloader,
             meshes=self._get_meshes_for_loader(),
             shard_dims="dp",
+            dense_tensor_idx=dense_tensor_idx,
             is_dataset_splitted=True,
         )
-        dist_loader._input_keys = ["input_ids", "labels"]
         return dist_loader

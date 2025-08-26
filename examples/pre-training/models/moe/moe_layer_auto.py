@@ -480,7 +480,7 @@ def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
     if hard_gate:
         x_gatherd = F.embedding(scatter_index, x)
         return x_gatherd.squeeze(-2)
-    ret = moe_combine_auto.moe_combine_auto(x, combine_weights, scatter_index)
+    ret = paddle.incubate.nn.functional.moe_combine(x, combine_weights, scatter_index)
 
     ret.stop_gradient = False
     return ret
@@ -683,8 +683,8 @@ class MOELayerAuto(MOELayer):
                     scatter_index,
                     dispatch_mask,
                     _,
-                ) = moe_ops_auto.moe_gate_dispatch_auto(
-                    input, prob, k, local_capacity, True
+                ) = paddle.incubate.nn.functional.moe_gate_dispatch(
+                    input, prob, None, k, local_capacity, True
                 )
                 dispatched_input.stop_gradient = False
                 combine_weights_unnorm.stop_gradient = False
@@ -720,7 +720,6 @@ class MOELayerAuto(MOELayer):
                     capacity=capacity,
                 )
         dispatch_mask.stop_gradient = True
-        scatter_index.stop_gradient = True
         return (
             dispatched_input,
             combine_weights,
