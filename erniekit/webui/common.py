@@ -850,6 +850,10 @@ def save_chat_log(content, save_name):
         content: The chat log content to save (must be JSON-serializable)
         save_name (str): The filename to use for the saved chat log
     """
+
+    if not os.path.exists(CHAT_LOG_PATH):
+        os.makedirs(CHAT_LOG_PATH)
+
     json_content = json.dumps(content, indent=2, ensure_ascii=False)
     save_path = os.path.join(CHAT_LOG_PATH, save_name)
     with open(save_path, "w", encoding="utf-8") as f:
