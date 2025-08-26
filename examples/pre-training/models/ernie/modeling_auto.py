@@ -2222,7 +2222,13 @@ class ErnieModelAutoPP(ErnieModelAuto):
         self.layer = ErnieDecoderLayerAuto(config, layer_idx, ipp)
 
     def forward(self, args):
-        hidden_states, attention_mask, position_ids = (*args, None, None)[:3]
+        attention_mask, position_ids = None, None
+        if isinstance(args, tuple):
+            hidden_states = args[0] if len(args) > 0 else args
+            attention_mask = args[1] if len(args) > 1 else None
+            position_ids = args[2] if len(args) > 2 else None
+        else:
+            hidden_states = args
         if self.layer.layer_idx == 0:
             hidden_states, attention_mask, position_ids = self.embed_inputs(
                 hidden_states, attention_mask, position_ids
