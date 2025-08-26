@@ -1111,7 +1111,7 @@ class ErnieAttentionAuto(nn.Layer):
                 past_key_value,
                 use_cache,
                 inbatch_pack_offset,
-                use_reentrant=False,
+                use_reentrant=True,
             )
         else:
             attn_output, attn_weights, past_key_value = self.rope_attn(
@@ -1820,7 +1820,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             use_cache,
             inbatch_pack_offset,
             token_type_ids,
-            use_reentrant=False,
+            use_reentrant=True,
         )
         return hidden_states
 
