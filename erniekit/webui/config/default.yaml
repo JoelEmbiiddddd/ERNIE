@@ -134,7 +134,7 @@ train_vl_sft:
   max_seq_len: 8192
   num_samples_each_epoch: 10000000
   max_prompt_len: 2048
-  modality_ratio: 0
+  modality_ratio: 1
   ### model
   lora_rank: 32
   lora_alpha: -1
@@ -173,6 +173,13 @@ train_vl_sft:
   evaluation_strategy: steps
   save_strategy: steps
   save_total_limit: 5
+  tensor_parallel_config: "sync_param sync_grad sync_moment"
+  tensor_parallel_degree: 4
+  pipeline_parallel_degree: 2
+  pp_need_data: true
+  pp_need_data_degree: 2
+  virtual_pp_degree: 1
+  pipeline_parallel_config: "enable_offload_queue enable_delay_scale_loss enable_overlap_p2p_comm best_unbalanced_scheduler"
 execute:
   # 执行配置请放在/erniekit/webui/config/execute文件夹中
   chat_yaml_path: "chat.yaml"

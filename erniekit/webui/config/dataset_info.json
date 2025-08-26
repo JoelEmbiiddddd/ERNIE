@@ -21,12 +21,12 @@
     "type": "erniekit"
   },
   "sft_vl-train_demo1": {
-    "path": "examples/data/sft_vl-train_demo1.json",
+    "path": "examples/data/sft_vl-train_demo1.jsonl",
     "prob": 1.0,
     "type": "erniekit"
   },
   "sft_vl-train_demo2": {
-    "path": "examples/data/sft_vl-train_demo2.json",
+    "path": "examples/data/sft_vl-train_demo2.jsonl",
     "prob": 1.0,
     "type": "erniekit"
   },
