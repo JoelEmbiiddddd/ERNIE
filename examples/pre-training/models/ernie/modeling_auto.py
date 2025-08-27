@@ -66,6 +66,7 @@ class BaseModelOutputWithPastAndCrossAttentions(_BaseModelOutput):
 
     router_loss: Optional[paddle.Tensor] = None
     gate_logits: Optional[Tuple[paddle.Tensor]] = None
+    mtp_outputs: Optional[paddle.Tensor] = None
 
 
 @dataclass
@@ -1750,6 +1751,38 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             if self.config.sequence_parallel
             else [dist.Shard(0), dist.Replicate()]
         )
+
+        if self.config.multi_token_pred_depth > 0:
+            Norm = RMSNorm if config.use_rmsnorm else LayerNorm
+            self.mtp_block = nn.LayerList(
+                [
+                    ErnieDecoderLayerAuto(config, layer_idx, -1)
+                    for layer_idx in range(self.config.multi_token_pred_depth)
+                ]
+            )
+            self.mtp_hidden_norm = nn.LayerList(
+                [Norm(config, -1) for _ in range(self.config.multi_token_pred_depth)]
+            )
+            self.mtp_emb_norm = nn.LayerList(
+                [Norm(config, -1) for _ in range(self.config.multi_token_pred_depth)]
+            )
+
+            LinearFN = (
+                paddle.incubate.nn.FusedLinear
+                if config.fuse_linear
+                else paddle.nn.Linear
+            )
+            self.mtp_linear_proj = nn.LayerList(
+                [
+                    LinearFN(
+                        self.config.hidden_size * 2,
+                        self.config.hidden_size,
+                        bias_attr=config.use_bias,
+                    )
+                    for _ in range(self.config.multi_token_pred_depth)
+                ]
+            )
+
         self.all_gate_logits = () if hasattr(self.config, "use_moe") else None
         self.inbatch_pack_offset = None
         self.token_type_ids = None
@@ -1759,6 +1792,8 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         self.all_hidden_states = None
         self.all_self_attns = None
         self.next_decoder_cache = None
+        self.inputs_embeds_extra = None
+        self.inputs_embeds_ori = None
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -1843,6 +1878,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         if self.past_key_values is None:
             past_key_values = tuple([None] * self.config.num_hidden_layers)
 
+        seq_length -= self.config.multi_token_pred_depth
         seq_length_with_past = seq_length
         cache_length = 0
 
@@ -1854,6 +1890,13 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             inputs_embeds = self.embed_tokens(input_ids).astype(
                 self.embed_tokens.weight.dtype
             )
+
+        if self.config.multi_token_pred_depth > 0:
+            self.inputs_embeds_extra = inputs_embeds[
+                :, -self.config.multi_token_pred_depth :, :
+            ]  # [B, S, D]
+            inputs_embeds = inputs_embeds[:, : -self.config.multi_token_pred_depth, :]
+            self.inputs_embeds_ori = inputs_embeds
 
         global_mesh = global_mesh_starts_with_pp()
         if self.config.sequence_parallel:
@@ -1957,6 +2000,80 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 all_router_loss += router_loss
         return hidden_states, all_router_loss
 
+    def mtp_layer(self, hidden_states, attention_mask, position_ids):
+        has_gradient = not hidden_states.stop_gradient
+        mtp_outputs = []
+        mtp_outputs.append(hidden_states)
+
+        for depth in range(self.config.multi_token_pred_depth):
+            if self.config.sequence_parallel or self.config.submatrix_parallel:
+                hidden_states = dist.reshard(
+                    hidden_states,
+                    get_mesh(-1),
+                    [dist.Replicate(), dist.Replicate()],
+                )
+                # hidden_states = hidden_states.reshape([-1, hidden_states.shape[0], hidden_states.shape[-1]])
+                hidden_states = paddle.transpose(hidden_states, [1, 0, 2])
+
+            # 构建输入向量
+            inputs_embeds_cur_depth = paddle.concat(
+                [
+                    self.inputs_embeds_ori[:, (depth + 1) :, :],
+                    self.inputs_embeds_extra[:, : (depth + 1), :],
+                ],
+                axis=1,
+            )
+
+            # Norm&Concat
+            inputs_embeds_cur_depth_norm = self.mtp_emb_norm[depth](
+                inputs_embeds_cur_depth
+            )
+            hidden_states_norm = self.mtp_hidden_norm[depth](hidden_states)
+            inputs_embeds_cur_depth = self.mtp_linear_proj[depth](
+                paddle.concat(
+                    [inputs_embeds_cur_depth_norm, hidden_states_norm], axis=-1
+                )
+            )
+
+            # scatter
+            if self.config.sequence_parallel or self.config.submatrix_parallel:
+                inputs_embeds_cur_depth = paddle.transpose(
+                    inputs_embeds_cur_depth, [1, 0, 2]
+                )
+                inputs_embeds_cur_depth = dist.reshard(
+                    inputs_embeds_cur_depth,
+                    get_mesh(-1),
+                    self.placements,
+                )
+
+            # 通过该层的decoder_layer进行预测
+            decoder_layer = self.mtp_block[depth]
+            past_key_values = None
+            layer_outputs = decoder_layer(
+                inputs_embeds_cur_depth,
+                attention_mask,
+                position_ids,
+                self.config.output_attentions,
+                past_key_values,
+                self.config.use_cache,
+                self.inbatch_pack_offset,
+                self.token_type_ids,
+            )
+
+            if isinstance(layer_outputs, (tuple, list)):
+                hidden_states = layer_outputs[0]
+            else:
+                hidden_states = layer_outputs
+
+            if self.config.use_moe:
+                if not (self.config.use_recompute and has_gradient):
+                    layer_outputs, gate_logits = layer_outputs[:-1], layer_outputs[-1]
+                    self.all_gate_logits = self.all_gate_logits + (gate_logits,)
+
+            mtp_outputs.append(hidden_states)
+        mtp_outputs = [self.norm(hidden_states) for hidden_states in mtp_outputs]
+        return mtp_outputs
+
     def forward(
         self,
         input_ids=None,
@@ -2010,7 +2127,13 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         if use_cache and not (hasattr(self.config, "use_moe") and self.config.use_moe):
             hidden_states = paddle.unsqueeze(hidden_states[:, -1, :], 1)
 
-        hidden_states = self.norm(hidden_states)
+        # Multi Token Prediction
+        mtp_outputs = []
+        if self.config.multi_token_pred_depth > 0:
+            mtp_outputs = self.mtp_layer(hidden_states, attention_mask, position_ids)
+            hidden_states, mtp_outputs = mtp_outputs[0], mtp_outputs[1:]
+        else:
+            hidden_states = self.norm(hidden_states)
 
         if output_hidden_states:
             self.all_hidden_states += (hidden_states,)
@@ -2027,6 +2150,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                     self.all_self_attns,
                     all_router_loss,
                     self.all_gate_logits,
+                    mtp_outputs,
                 ]
                 if v is not None
             )
@@ -2038,6 +2162,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             cross_attentions=None,
             router_loss=all_router_loss,
             gate_logits=self.all_gate_logits,
+            mtp_outputs=mtp_outputs,
         )
 
 
@@ -2060,15 +2185,56 @@ class ErniePretrainingCriterion(paddle.nn.Layer):
             reduction="none",
         )
 
-    def forward(self, prediction_scores, masked_lm_labels, router_loss=None):
+    def forward(
+        self, prediction_scores, masked_lm_labels, router_loss=None, mtp_logits=None
+    ):
         """
         calculates the final loss
         """
+        if self.config.multi_token_pred_depth > 0:
+            masked_lm_labels_ori = masked_lm_labels
+            masked_lm_labels = masked_lm_labels[
+                :, : -self.config.multi_token_pred_depth
+            ]
+            seq_length = masked_lm_labels.shape[1]
         res = self.forward_impl(prediction_scores, masked_lm_labels)
+        if self.config.multi_token_pred_depth > 0:
+            mtp_loss_res = []
+            for depth in range(self.config.multi_token_pred_depth):
+                prediction_scores_cur_depth = mtp_logits[depth]
+                masked_lm_labels_cur_depth = masked_lm_labels_ori[
+                    :, (depth + 1) : (depth + 1 + seq_length)
+                ]
+                res_cur_depth = self.forward_impl(
+                    prediction_scores_cur_depth,
+                    masked_lm_labels_cur_depth,
+                )
+                mtp_loss_res.append(res_cur_depth)
+
+        def add_loss(main_loss, loss):
+            return main_loss + loss - loss.detach()
+
         if self.return_tuple:
             loss, loss_sum = res
+            if self.config.multi_token_pred_depth > 0:
+                loss = add_loss(
+                    loss,
+                    self.config.multi_token_pred_lambda
+                    * sum([x[0] for x in mtp_loss_res])
+                    / len(mtp_loss_res),
+                )
+                loss_sum = loss_sum + self.config.multi_token_pred_lambda * sum(
+                    [x[1].detach() for x in mtp_loss_res]
+                ) / len(mtp_loss_res)
         else:
             loss, loss_sum = res, None
+            if self.config.multi_token_pred_depth > 0:
+                loss = add_loss(
+                    loss,
+                    self.config.multi_token_pred_lambda
+                    * sum(mtp_loss_res)
+                    / len(mtp_loss_res),
+                )
         if router_loss is not None and not in_auto_parallel_align_mode():
             loss = loss + router_loss - router_loss.detach()
         if not self.return_tuple:
@@ -2237,9 +2403,22 @@ class ErnieModelAutoPP(ErnieModelAuto):
             self.layer, hidden_states, attention_mask, position_ids
         )
         if self.layer.layer_idx == self.config.num_hidden_layers - 1:
-            hidden_states = self.norm(hidden_states)
+            # Multi Token Prediction
+            mtp_outputs = []
+            if self.config.multi_token_pred_depth > 0:
+                mtp_outputs = self.mtp_layer(
+                    hidden_states, attention_mask, position_ids
+                )
+                hidden_states, mtp_outputs = mtp_outputs[0], mtp_outputs[1:]
+            else:
+                hidden_states = self.norm(hidden_states)
             logits = self.lm_head(hidden_states)
-            return logits
+            mtp_logits = []
+            if self.config.multi_token_pred_depth > 0:
+                mtp_logits = [
+                    self.lm_head(_hidden_states) for _hidden_states in mtp_outputs
+                ]
+            return logits, mtp_logits
         else:
             return hidden_states
 
@@ -2449,10 +2628,16 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
         )
 
         hidden_states = outputs.last_hidden_state
-
+        mtp_outputs = outputs.mtp_outputs
         logits = self.lm_head(
             hidden_states,
         )
+
+        mtp_logits = []
+        if len(mtp_outputs) > 0:
+            mtp_logits = [
+                self.lm_head(_hidden_states) for _hidden_states in mtp_outputs
+            ]
 
         if return_dict:
             if labels is not None:
@@ -2474,4 +2659,4 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
             if hasattr(self.config, "use_moe") and self.config.use_moe
             else None
         )
-        return self.criterion(logits, labels, router_loss)
+        return self.criterion(logits, labels, router_loss, mtp_logits)
