@@ -535,7 +535,6 @@ def basic_vl_reaction_by_model_name(manager):
         manager: The model or state manager containing the selected model information
     """
     model_name = manager.get_elem_by_id("basic", "model_name")
-    compute_type = manager.get_elem_by_id("basic", "compute_type")
     virtual_pp_degree = manager.get_elem_by_id("basic", "virtual_pp_degree")
     pp_need_data_degree = manager.get_elem_by_id("basic", "pp_need_data_degree")
     model_name_or_path = manager.get_elem_by_id("basic", "model_name_or_path")
@@ -544,14 +543,12 @@ def basic_vl_reaction_by_model_name(manager):
 
         if config.is_vl_models(model_name_value):
             return (
-                gr.update(interactive=False, value="bf16"),
                 gr.update(visible=True),
                 gr.update(visible=True),
                 gr.update(interactive=True),
             )
 
         return (
-            gr.update(interactive=True),
             gr.update(interactive=True),
             gr.update(visible=False),
             gr.update(interactive=True),
@@ -561,7 +558,6 @@ def basic_vl_reaction_by_model_name(manager):
         fn=update_basic_vl_components,
         inputs=model_name,
         outputs=[
-            compute_type,
             virtual_pp_degree,
             pp_need_data_degree,
             model_name_or_path,
@@ -1306,14 +1302,10 @@ def update_compute_type_by_fine_tuning(manager):
 
     fine_tuning = manager.get_elem_by_id("basic", "fine_tuning")
     compute_type = manager.get_elem_by_id("basic", "compute_type")
-    model_name = manager.get_elem_by_id("basic", "model_name")
 
     last_update_time = [0]
 
-    def update_choices(fine_tuning_value, model_name_value):
-
-        if config.is_vl_models(model_name_value):
-            return gr.update()
+    def update_choices(fine_tuning_value):
 
         current_time = time.time()
         last_update_time[0] = current_time
@@ -1338,9 +1330,7 @@ def update_compute_type_by_fine_tuning(manager):
         if compute_type_value == "fp8":
             gr.Warning(alert.get("compute_type_fp8_notice", "warning"))
 
-    fine_tuning.change(
-        fn=update_choices, inputs=[fine_tuning, model_name], outputs=[compute_type]
-    )
+    fine_tuning.change(fn=update_choices, inputs=[fine_tuning], outputs=[compute_type])
     compute_type.change(fn=alert_compute_type_fp8, inputs=[compute_type], outputs=[])
 
 
