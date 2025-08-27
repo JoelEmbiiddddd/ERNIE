@@ -214,8 +214,8 @@ CSS = """
 }
 
 .custom-file-input {
-    height: 330px !important;
-    min-height: 330px !important;
+    height: 180px !important;
+    min-height: 180px !important;
     position: relative !important;
 }
 

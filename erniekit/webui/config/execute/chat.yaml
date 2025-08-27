@@ -1,14 +1,13 @@
-enable_mm: true
-limit_mm_per_prompt: '{"image": 100, "video": 100}'
+### model
+model_name_or_path: baidu/ERNIE-4.5-0.3B
+tensor_parallel_degree: 8
+output_dir: None
+
+### server
 max_model_len: 131072
-max_new_tokens: 8192
-max_num_batched_tokens: 384
-max_num_seqs: 32
-model_name_or_path: null
-output_dir: ./output/Customization_SFT_LoRA_2025_08_19_18_25_42
 port: 8188
-quantization: wint4
-reasoning_parser: ernie-45-vl
-temperature: 0.95
-tensor_parallel_degree: 1
+
+### chat
+max_new_tokens: 8192
 top_p: 0.7
+temperature: 0.95

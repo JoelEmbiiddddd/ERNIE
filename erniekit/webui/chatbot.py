@@ -40,14 +40,15 @@ class ChatRequest:
     message: str
     model_name: str
     history: List[Dict[str, str]]
-    file_input: Optional[List[str]] = None  # Added file input parameter
+    file_input: Optional[List[str]] = None
+    url_input: str = None
     role_setting: Optional[str] = None
     system_prompt: Optional[str] = None
     max_length: int = 1000
     top_p: float = 0.8
     temperature: float = 0.7
     port: int = 8188
-    enable_thinking: bool = False  # Added for thought models
+    enable_thinking: bool = False
 
 
 @dataclass
@@ -267,6 +268,7 @@ class MessageProcessor:
         system_prompt: Optional[str] = None,
         is_multimodal: bool = False,
         file_input: Optional[List[str]] = None,
+        url_input: str = None,
         chatbot_instance=None,
     ) -> List[Dict[str, Any]]:
         """
@@ -297,7 +299,7 @@ class MessageProcessor:
 
         if is_multimodal:
             user_content = MessageProcessor._parse_multimodal_content(
-                message, file_input, chatbot_instance
+                message, file_input, chatbot_instance, url_input
             )
         else:
             user_content = message
@@ -369,7 +371,10 @@ class MessageProcessor:
 
     @staticmethod
     def _parse_multimodal_content(
-        message: str, file_input: Optional[List[str]] = None, chatbot_instance=None
+        message: str,
+        file_input: Optional[List[str]] = None,
+        chatbot_instance=None,
+        url_input: str = None,
     ) -> Union[str, List[Dict[str, Any]]]:
         """
         Parse message for multimodal content (local images, videos) and text
@@ -383,6 +388,7 @@ class MessageProcessor:
             Either text string or list of content dictionaries
         """
         content_list = []
+        LOCAL_FILE_PREFIX = "file://"
 
         if file_input and chatbot_instance:
             classified_files = chatbot_instance._classifie_file_by_ext(file_input)
@@ -392,14 +398,34 @@ class MessageProcessor:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": img_path,
+                            "url": f"{LOCAL_FILE_PREFIX}{img_path}",
                         },
                     }
                 )
 
             for vid_path in classified_files.get("video_url", []):
                 content_list.append(
-                    {"type": "video_url", "video_url": {"url": vid_path}}
+                    {
+                        "type": "video_url",
+                        "video_url": {"url": f"{LOCAL_FILE_PREFIX}{vid_path}"},
+                    }
+                )
+        if url_input and chatbot_instance:
+            img_url_input = url_input["image"]
+            for img_path in img_url_input.split(";"):
+                content_list.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": img_path},
+                    }
+                )
+            video_url_input = url_input["video"]
+            for video_path in video_url_input.split(";"):
+                content_list.append(
+                    {
+                        "type": "video_url",
+                        "video_url": {"url": video_path},
+                    }
                 )
 
         if message.strip():
@@ -601,6 +627,7 @@ class TextResponseGenerator(BaseResponseGenerator):
                 request.system_prompt,
                 is_multimodal=False,
                 file_input=request.file_input,
+                url_input=request.url_input,
                 chatbot_instance=chatbot_instance,
             )
 
@@ -702,6 +729,7 @@ class MultimodalResponseGenerator(BaseResponseGenerator):
                 request.system_prompt,
                 is_multimodal=True,
                 file_input=request.file_input,
+                url_input=request.url_input,
                 chatbot_instance=chatbot_instance,
             )
 
@@ -807,6 +835,7 @@ class ThoughtResponseGenerator(BaseResponseGenerator):
                 request.system_prompt,
                 is_multimodal=False,
                 file_input=request.file_input,
+                url_input=request.url_input,
                 chatbot_instance=chatbot_instance,
             )
 
@@ -922,6 +951,7 @@ class MultimodalThoughtResponseGenerator(BaseResponseGenerator):
                 request.system_prompt,
                 is_multimodal=True,
                 file_input=request.file_input,
+                url_input=request.url_input,
                 chatbot_instance=chatbot_instance,
             )
 
@@ -1216,7 +1246,8 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
-        file_input: Optional[List[str]] = None,  # Added file_input parameter
+        file_input: Optional[List[str]] = None,
+        url_input: str = None,
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """
         Generate text-only response (legacy compatibility)
@@ -1245,6 +1276,7 @@ class ChatBotGenerator:
             temperature=temperature,
             port=port,
             file_input=file_input,
+            url_input=url_input,
         )
 
         generator = self.generators[ModelType.TEXT]
@@ -1261,7 +1293,8 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
-        file_input: Optional[List[str]] = None,  # Added file_input parameter
+        file_input: Optional[List[str]] = None,
+        url_input: str = None,
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """
         Generate multimodal response (legacy compatibility)
@@ -1289,6 +1322,7 @@ class ChatBotGenerator:
             temperature=temperature,
             port=port,
             file_input=file_input,
+            url_input=url_input,
         )
 
         generator = self.generators[ModelType.MULTIMODAL]
@@ -1306,6 +1340,7 @@ class ChatBotGenerator:
         temperature: float = 0.7,
         port: int = 8188,
         file_input: Optional[List[str]] = None,
+        url_input: str = None,
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """
         Generate response with thought process (legacy compatibility)
@@ -1334,6 +1369,7 @@ class ChatBotGenerator:
             port=port,
             enable_thinking=True,
             file_input=file_input,
+            url_input=url_input,
         )
 
         generator = self.generators[ModelType.THOUGHT]
@@ -1352,7 +1388,8 @@ class ChatBotGenerator:
         top_p: float = 0.8,
         temperature: float = 0.7,
         port: int = 8188,
-        file_input: Optional[List[str]] = None,  # Added file_input parameter
+        file_input: Optional[List[str]] = None,
+        url_input: str = None,
     ) -> AsyncGenerator[Tuple[List[Dict], gr.update], None]:
         """
         Unified interface to generate response based on model capabilities
@@ -1382,6 +1419,7 @@ class ChatBotGenerator:
             port=port,
             enable_thinking=enable_thought,
             file_input=file_input,
+            url_input=url_input,
         )
 
         model_type = self._determine_model_type(model_name, enable_thought)

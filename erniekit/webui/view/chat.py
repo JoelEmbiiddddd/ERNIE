@@ -136,16 +136,29 @@ def build(manager):
 
         with gr.Column(scale=2):
             with gr.Row():
-                chat_input = gr.Textbox(
-                    lines=3,
-                    show_copy_button=True,
-                )
-                file_input = gr.File(
-                    file_count="multiple",
-                    file_types=config.get_file_type(),
-                    visible=False,
-                    elem_classes="custom-file-input",
-                )
+                with gr.Column() as chat_tab_col:
+                    chat_input = gr.Textbox(
+                        lines=3, show_copy_button=True, container=True
+                    )
+                with gr.Column() as file_tab_col:
+
+                    file_input = gr.File(
+                        file_count="multiple",
+                        file_types=config.get_file_type(),
+                        visible=False,
+                        elem_classes="custom-file-input",
+                    )
+
+                    img_url_input = gr.Textbox(
+                        lines=2,
+                        visible=False,
+                    )
+
+                    video_url_input = gr.Textbox(
+                        lines=2,
+                        visible=False,
+                    )
+
             with gr.Row():
                 role_setting = gr.Textbox(
                     lines=2,
@@ -183,6 +196,10 @@ def build(manager):
     manager.add_elem("chat", "thought_checkbox", thought_checkbox, False)
     manager.add_elem("chat", "download_log_btn", download_log_btn)
     manager.add_elem("chat", "generate_log_btn", generate_log_btn)
+    manager.add_elem("chat", "img_url_input", img_url_input)
+    manager.add_elem("chat", "video_url_input", video_url_input)
+    manager.add_elem("chat", "chat_tab_col", chat_tab_col)
+    manager.add_elem("chat", "file_tab_col", file_tab_col)
 
     manager.add_elem("chat", "chat_tab", chat_tab)
     control.chat_reaction(manager, CommandRunner())

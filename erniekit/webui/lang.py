@@ -869,6 +869,26 @@ LOCALES = {
         "zh": {"label": "角色设置"},
         "en": {"label": "Role Setting"},
     },
+    "img_url_input": {
+        "zh": {
+            "label": "URL图片",
+            "placeholder": "多个路径请以 ; 隔开, 比如url1;url2;url3",
+        },
+        "en": {
+            "label": "URL Image",
+            "placeholder": "Multiple URLs separated by ;, e.g., url1;url2;url3",
+        },
+    },
+    "video_url_input": {
+        "zh": {
+            "label": "URL视频",
+            "placeholder": "多个路径请以 ; 隔开, 比如url1;url2;url3",
+        },
+        "en": {
+            "label": "URL Video",
+            "placeholder": "Multiple URLs separated by ;, e.g., url1;url2;url3",
+        },
+    },
 }
 
 

@@ -68,8 +68,8 @@ class ConfigManager:
         self._user_default_config = self._init_user_dict()
         self._execute_yaml_path = self._init_execute_yaml_path()
         self._dataset_info = self._init_dataset_info()
-        self._thought_models = ["ERNIE-X1-300B-A47B"]
-        self._vl_models = ["ERNIE-4.5-VL-28B-A3B-Paddle"]
+        self._thought_models = [""]
+        self._vl_models = ["Customization_VL"]
         self._choices_kwargs = {
             "model_name": self._model_selector["model_name"],
             "model_source_ernie": self._model_selector["model_source_ernie"],
@@ -77,12 +77,10 @@ class ConfigManager:
             "model_path_local": self._model_selector["model_path_local"],
             "fine_tuning": ["LoRA", "Full"],
             "existed_dataset_list": list(self._dataset_info.keys()),
-            "stage": ["SFT", "DPO"],
             "compute_type_Full": ["bf16", "fp16", "fp8"],
             "compute_type_LoRA": ["bf16", "fp16", "fp8", "wint8", "wint4/8"],
-            "best_config": ["SFT", "DPO"],
-            "stages": ["SFT", "DPO"],
-            "vl_stages": ["VL-SFT"],
+            "best_config": ["SFT", "DPO", "VL-SFT"],
+            "stages": ["SFT", "DPO", "VL-SFT"],
             "language": ["zh", "en"],
             "boolean_choice": ["True", "False"],
             "moe_group": ["dummy", "mp"],
@@ -147,12 +145,12 @@ class ConfigManager:
         """
 
         return {
-            "model_name": ["Customization", "ERNIE-4.5-VL-28B-A3B-Paddle"],
+            "model_name": ["Customization", "Customization_VL"],
             "model_source_ernie": ["Local"],
             "model_source_custom": ["Local"],
             "model_path_local": {
                 "Customization": "",
-                "ERNIE-4.5-VL-28B-A3B-Paddle": "baidu/ERNIE-4.5-VL-28B-A3B-Paddle",
+                "Customization_VL": "baidu/ERNIE-4.5-VL-28B-A3B-Paddle",
             },
         }
 
@@ -406,6 +404,9 @@ class ConfigManager:
             "chat": self.get_commands_cli("server")
             + " "
             + self.get_execute_yaml_path("chat_yaml_path"),
+            "chat_vl": self.get_commands_cli("server")
+            + " "
+            + self.get_execute_yaml_path("chat_vl_yaml_path"),
             "train_sft": self.get_commands_cli("train")
             + " "
             + self.get_execute_yaml_path("train_sft_yaml_path"),
@@ -494,6 +495,9 @@ class ConfigManager:
             ),
             "train_vl_sft_yaml_path": os.path.join(
                 EXECUTE_PATH, execute_path_list["train_vl_sft_yaml_path"]
+            ),
+            "chat_vl_yaml_path": os.path.join(
+                EXECUTE_PATH, execute_path_list["chat_vl_yaml_path"]
             ),
         }
 

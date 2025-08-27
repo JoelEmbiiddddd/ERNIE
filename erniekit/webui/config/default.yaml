@@ -37,7 +37,7 @@ train_sft:
   ### data
   train_dataset: ['demo_sft_train']
   eval_dataset: ['demo_sft_eval']
-  text_dataset: ['demo_sft_train']
+  text_dataset:
   max_seq_len: 8192
   num_samples_each_epoch: 6000000
   max_prompt_len: 2048
@@ -84,7 +84,7 @@ train_dpo:
   ### data
   train_dataset: ['demo_dpo_train']
   eval_dataset: ['demo_dpo_eval']
-  text_dataset: [ 'demo_sft_train' ]
+  text_dataset:
   max_seq_len: 8192
   num_samples_each_epoch: 6000000
   max_prompt_len: 2048
@@ -143,7 +143,7 @@ train_vl_sft:
   ### finetuning
   # base
   stage: VL-SFT
-  recompute: False
+  recompute: true
   num_train_epochs: 1
   max_steps: 8000
   batch_size: 1
@@ -164,7 +164,7 @@ train_vl_sft:
   adam_epsilon: 1.0e-8
   adam_beta1: 0.9
   adam_beta2: 0.95
-  release_grads: True
+  release_grads: false
   scale_loss: 4096
   # output
   logging_steps: 1
@@ -180,9 +180,11 @@ train_vl_sft:
   pp_need_data_degree: 2
   virtual_pp_degree: 1
   pipeline_parallel_config: "enable_offload_queue enable_delay_scale_loss enable_overlap_p2p_comm best_unbalanced_scheduler"
+  sharding_parallel_degree: -1
 execute:
   # 执行配置请放在/erniekit/webui/config/execute文件夹中
   chat_yaml_path: "chat.yaml"
+  chat_vl_yaml_path: "chat_vl.yaml"
   export_yaml_path: "export.yaml"
   eval_yaml_path: "eval.yaml"
   train_sft_yaml_path: "train_sft.yaml"

@@ -139,19 +139,24 @@ def train_reaction(manager, runner, module):
 def train_update_by_basic_model_name_group(
     manager, train_dataset_elem, eval_dataset_elem, text_dataset_elem
 ):
+    train_update_by_basic_model_name_combine(manager, train_dataset_elem, "train")
+    train_update_by_basic_model_name_combine(manager, eval_dataset_elem, "eval")
+    train_update_by_basic_model_name_combine(manager, text_dataset_elem, "text")
+
+
+def train_update_by_basic_model_name_combine(manager, dataset_elem, elem_type):
     train_update_by_basic_model_name(
         manager,
-        "train",
-        train_dataset_elem["row_components"],
-        train_dataset_elem["form_data"],
+        elem_type,
+        dataset_elem["row_components"],
+        dataset_elem["form_data"],
     )
-    # train_update_by_basic_model_name(manager, "eval", eval_dataset_elem["row_components"], eval_dataset_elem["form_data"])
-    # train_update_by_basic_model_name(manager, "text", text_dataset_elem["row_components"], text_dataset_elem["form_data"])
+
     train_update_by_best_config(
         manager,
-        "train",
-        train_dataset_elem["row_components"],
-        train_dataset_elem["form_data"],
+        elem_type,
+        dataset_elem["row_components"],
+        dataset_elem["form_data"],
     )
 
 
@@ -175,6 +180,25 @@ def train_update_by_best_config(manager, elem_type, row_components, form_data_st
         inputs=[best_config, form_data_state],
         outputs=[form_data_state] + all_components,
     )
+
+
+# def train_update_dataset_row_init_load(manager, elem_type, dataset_type, row_components, form_data_state):
+#
+#     def init_dataset_row(form_data):
+#         user_config_dataset = config.get_default_user_dict(f"train_{elem_type.lower()}",f"{dataset_type}_dataset" )
+#         return update_dataset_row_components(
+#             user_config_dataset, form_data, row_components, False
+#         )
+#
+#     all_components = []
+#     for row in row_components:
+#         all_components.extend(row)
+#
+#     manager.demo.load(
+#         fn=init_dataset_row,
+#         inputs=[form_data_state],
+#         outputs=[form_data_state] + all_components,
+#     )
 
 
 def train_update_by_basic_model_name(
@@ -560,29 +584,110 @@ def chat_vl_reaction(manager):
     model_name = manager.get_elem_by_id("basic", "model_name")
     language = manager.get_elem_by_id("basic", "language")
     thought_checkbox = manager.get_elem_by_id("chat", "thought_checkbox")
+    img_url_input = manager.get_elem_by_id("chat", "img_url_input")
+    video_url_input = manager.get_elem_by_id("chat", "video_url_input")
+    best_config = manager.get_elem_by_id("basic", "best_config")
+    chat_tab_col = manager.get_elem_by_id("chat", "chat_tab_col")
+    file_tab_col = manager.get_elem_by_id("chat", "file_tab_col")
 
-    def toggle_layout(model_name_value):
+    def toggle_layout_by_model_name(model_name_value):
         if config.is_vl_models(model_name_value):
-            time.sleep(0.1)
-            return gr.update(lines=13), gr.update(visible=True), gr.update(visible=True)
-        return gr.update(lines=3), gr.update(visible=False), gr.update(visible=False)
+            time.sleep(0.01)
+            return (
+                gr.update(lines=18),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(scale=1),
+                gr.update(scale=1, visible=True),
+            )
+        return (
+            gr.update(lines=3),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(False),
+            gr.update(scale=4),
+            gr.update(scale=0, visible=False),
+        )
+
+    def toggle_layout_by_best_config(stage_value):
+        if stage_value == "VL-SFT":
+            time.sleep(0.01)
+            return (
+                gr.update(lines=18),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(scale=1),
+                gr.update(scale=1, visible=True),
+            )
+        return (
+            gr.update(lines=3),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(False),
+            gr.update(scale=4),
+            gr.update(scale=0, visible=False),
+        )
 
     model_name.change(
-        fn=toggle_layout,
+        fn=toggle_layout_by_model_name,
         inputs=model_name,
-        outputs=[chat_input, file_input, thought_checkbox],
+        outputs=[
+            chat_input,
+            file_input,
+            thought_checkbox,
+            img_url_input,
+            video_url_input,
+            chat_tab_col,
+            file_tab_col,
+        ],
+    )
+
+    best_config.change(
+        fn=toggle_layout_by_best_config,
+        inputs=best_config,
+        outputs=[
+            chat_input,
+            file_input,
+            thought_checkbox,
+            img_url_input,
+            video_url_input,
+            chat_tab_col,
+            file_tab_col,
+        ],
     )
 
     language.change(
-        fn=toggle_layout,
+        fn=toggle_layout_by_model_name,
         inputs=model_name,
-        outputs=[chat_input, file_input, thought_checkbox],
+        outputs=[
+            chat_input,
+            file_input,
+            thought_checkbox,
+            img_url_input,
+            video_url_input,
+            chat_tab_col,
+            file_tab_col,
+        ],
     )
 
     manager.demo.load(
-        fn=toggle_layout,
+        fn=toggle_layout_by_model_name,
         inputs=model_name,
-        outputs=[chat_input, file_input, thought_checkbox],
+        outputs=[
+            chat_input,
+            file_input,
+            thought_checkbox,
+            img_url_input,
+            video_url_input,
+            chat_tab_col,
+            file_tab_col,
+        ],
     )
 
 
@@ -1309,11 +1414,19 @@ def chat_load_model_button(manager, runner):
     port = manager.get_elem_by_id("chat", "port")
     save_port = manager.get_elem_by_id("chat", "save_port")
     progress_display = manager.get_elem_by_id("chat", "progress_display")
+    model_name = manager.get_elem_by_id("basic", "model_name")
 
-    async def chat_start_execution(port):
-        update_config_yaml(manager, "chat_yaml_path", "chat")
+    async def chat_start_execution(port, model_name_value):
 
-        command = config.get_execute_command("chat")
+        if config.is_vl_models(model_name_value):
+            execute_path = "chat_vl_yaml_path"
+            command = config.get_execute_command("chat_vl")
+        else:
+            execute_path = "chat_yaml_path"
+            command = config.get_execute_command("chat")
+
+        update_config_yaml(manager, execute_path, "chat")
+
         async for output, percentage in execute_command(runner, command):
             yield (
                 output,
@@ -1326,7 +1439,7 @@ def chat_load_model_button(manager, runner):
 
     load_model_btn.click(
         fn=chat_start_execution,
-        inputs=[port],
+        inputs=[port, model_name],
         outputs=[output_text, save_port, progress_display],
     )
 
@@ -1775,21 +1888,18 @@ def setup_update_stage(manager):
                 gr.update(
                     interactive=False,
                     value=VL_SFT_VALUE,
-                    choices=config.get_choices_kwargs("vl_stages"),
                 ),
                 gr.update(
                     value=VL_SFT_VALUE,
-                    choices=config.get_choices_kwargs("vl_stages"),
                 ),
             ]
 
         return [
             gr.update(
                 interactive=True,
-                choices=config.get_choices_kwargs("stages"),
                 value="SFT",
             ),
-            gr.update(choices=config.get_choices_kwargs("stages"), value="SFT"),
+            gr.update(value="SFT"),
         ]
 
     best_config_elem.change(
@@ -1831,6 +1941,8 @@ def setup_chatbot_response(manager):
     clear_btn = manager.get_elem_by_id("chat", "clear_btn")
     file_input = manager.get_elem_by_id("chat", "file_input")
     thought_checkbox = manager.get_elem_by_id("chat", "thought_checkbox")
+    img_url_input = manager.get_elem_by_id("chat", "img_url_input")
+    video_url_input = manager.get_elem_by_id("chat", "video_url_input")
 
     async def on_submit(
         message,
@@ -1844,8 +1956,15 @@ def setup_chatbot_response(manager):
         model_name,
         file_input,
         thought_checkbox,
+        img_url_input,
+        video_url_input,
     ):
         update_config_yaml(manager, "chat_yaml_path", "chat")
+        url_input = {
+            "image": img_url_input,
+            "video": video_url_input,
+        }
+
         async for result in chat_generator.generate_response(
             message=message,
             history=history,
@@ -1858,6 +1977,7 @@ def setup_chatbot_response(manager):
             temperature=temperature,
             port=port,
             file_input=file_input,
+            url_input=url_input,
         ):
             yield result
 
@@ -1882,6 +2002,8 @@ def setup_chatbot_response(manager):
             model_name,
             file_input,
             thought_checkbox,
+            img_url_input,
+            video_url_input,
         ],
         outputs=[
             chatbot,
@@ -1904,6 +2026,8 @@ def setup_chatbot_response(manager):
             model_name,
             file_input,
             thought_checkbox,
+            img_url_input,
+            video_url_input,
         ],
         outputs=[
             chatbot,
