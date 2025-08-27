@@ -117,7 +117,6 @@ def run_vl_sft(
     preprocess_args.batch_size = finetuning_args.batch_size
     finetuning_args.max_seq_len = data_args.max_seq_len
     finetuning_args.max_seq_length = data_args.max_seq_len
-
     if data_args.max_seq_len <= 8192:
         model_args.use_sparse_head_and_loss_fn = False
         model_args.use_recompute_loss_fn = False
