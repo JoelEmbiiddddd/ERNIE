@@ -49,13 +49,22 @@ class CommandRunner:
 
         # 实时更新优化
         self.last_update_time = 0
-        self.min_update_interval = 0.05  # 50ms最小间隔，更频繁更新
-        self.force_update_threshold = 0.2  # 200ms强制更新
+        self.min_update_interval = 0.05
+        self.force_update_threshold = 0.2
         self.line_count_since_update = 0
-        self.max_lines_before_update = 3  # 每3行就更新一次
+        self.max_lines_before_update = 3
 
     async def execute(self, command: str) -> AsyncGenerator[Tuple[str, float], None]:
-        """超实时版本的执行函数"""
+        """
+        Asynchronously execute a shell command and stream its output.
+
+        Args:
+            self: Instance reference
+            command (str):  command to execute
+
+        Returns:
+            AsyncGenerator[str, None]: Asynchronous generator yielding output lines
+        """
         self.lines_history = []
         self.progress_line_buffer = {}
         self.last_update_time = time.time()
@@ -151,7 +160,13 @@ class CommandRunner:
             self.loss_tracker.stop_monitoring()
 
     def _process_line_realtime(self, line_clean: str) -> bool:
-        """实时处理每一行，返回是否需要立即更新UI"""
+        """
+        Extract a complete line from the buffer, handling both LF (\n) and CR+LF (\r\n) endings.
+
+        Args:
+            self: Instance reference
+            buffer (bytes): Byte buffer containing partial or complete lines
+        """
         progress_key = self._get_progress_key(line_clean)
 
         if progress_key:
@@ -167,6 +182,14 @@ class CommandRunner:
             return False
 
     def _is_important_line(self, line: str) -> bool:
+        """
+        Determine if a line is important or not.
+        Args:
+            self: Instance reference
+            line (str): Line to check
+        Returns:
+            bool: True if the line is important, otherwise False
+        """
         important_keywords = [
             "error",
             "Error",
@@ -203,10 +226,15 @@ class CommandRunner:
 
         return any(keyword in line for keyword in important_keywords)
 
-    def _should_show_progress(self, line: str) -> bool:
-        return True
-
     def _get_progress_key(self, line: str) -> Optional[str]:
+        """
+        Get a progress key from a line and return it if it exists.
+        Args:
+            self: Instance reference
+            line (str): Line to check
+        Returns:
+            str: Progress key if found, otherwise None
+        """
         patterns = [
             r"(Loading\s+\w+):\s*\d+%",
             r"(\w+\s+\w+):\s*\d+%",
@@ -224,11 +252,9 @@ class CommandRunner:
             if match:
                 return match.group(1)
 
-        # 如果包含进度相关关键词，也当作进度
         progress_keywords = ["progress", "epoch", "step", "batch", "%", "/", "loss"]
         for keyword in progress_keywords:
             if keyword in line.lower():
-                # 使用行的前几个词作为key
                 words = line.split()
                 if len(words) > 0:
                     return words[0]
@@ -236,25 +262,41 @@ class CommandRunner:
         return None
 
     def _update_progress_in_history(self, progress_key: str, line: str):
-        """更新历史记录中的进度行"""
-        # 查找现有的进度行并替换
+        """
+        Update the progress history with a new line.
+        Args:
+            self: Instance reference
+            progress_key (str): Progress key to update
+            line (str): Line to update
+        Returns:
+            None
+        """
         for i, history_line in enumerate(self.lines_history):
             if progress_key in history_line and self._get_progress_key(history_line):
                 self.lines_history[i] = line
                 return
 
-        # 如果没找到，直接添加
         self.lines_history.append(line)
 
     def _flush_progress_buffer(self):
-        """刷新进度缓冲区"""
+        """
+        Flush buffer and flush progress buffer.
+        Args:
+            self: Instance reference
+        """
         for progress_key, line in self.progress_line_buffer.items():
             self._update_progress_in_history(progress_key, line)
 
     def _parse_progress(self, line: str):
-        """解析进度信息 - 更全面的解析"""
+        """
+        Parse a line and return a progress key.
+        Args:
+            self: Instance reference
+            line (str): Line to parse
+        Returns:
+            str: Progress key
+        """
         try:
-            # 解析各种进度格式
             patterns = [
                 (
                     r"global_step:\s*(\d+)",
@@ -282,11 +324,15 @@ class CommandRunner:
                     break
 
         except Exception:
-            # 忽略解析错误，不影响显示
             pass
 
     def _extract_next_line(self, buffer):
-        """提取下一行"""
+        """
+        Extract the next line from the buffer.
+        Args:
+            self: Instance reference
+            buffer (bytes): Buffer containing partial or complete lines
+        """
         nl_pos = buffer.find(b"\n")
         cr_pos = buffer.find(b"\r")
 
@@ -302,7 +348,15 @@ class CommandRunner:
         return buffer[:end_pos], buffer[end_pos:]
 
     def compute_percentage(self, current: int, total: int) -> float:
-        """计算进度百分比"""
+        """
+        Compute the percentage between current and total.
+        Args:
+            self: Instance reference
+            current (int): Current progress
+            total (int): Total progress
+        Returns:
+            float: Percentage
+        """
         if total > 0:
             progress_ratio = current / total
             self.percentage = progress_ratio * 100
