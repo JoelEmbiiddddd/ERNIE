@@ -1510,7 +1510,7 @@ def setup_start_button(manager, runner, module):
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("export")
 
-        async for output in execute_command(runner, command):
+        async for output, _ in execute_command(runner, command):
             yield output
 
     async def start_export_split_execution():
@@ -1524,7 +1524,7 @@ def setup_start_button(manager, runner, module):
         update_config_yaml(manager, execute_path, "export")
         command = config.get_execute_command("split")
 
-        async for output in execute_command(runner, command):
+        async for output, _ in execute_command(runner, command):
             yield output
 
     if start_btn and output_text:
