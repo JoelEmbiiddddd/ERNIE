@@ -24,6 +24,8 @@ import time
 import threading
 import pandas as pd
 from typing import AsyncGenerator, Tuple, Optional
+import erniekit.webui.common as common
+from erniekit.webui.alert import alert
 
 
 class CommandRunner:
@@ -302,41 +304,52 @@ class CommandRunner:
         return self.percentage
 
     async def stop(self):
-        """终止当前进程"""
+        """
+        Terminate the currently running process asynchronously.
+
+        Args:
+            self: Instance reference
+        """
         async with self.process_lock:
             process = self.current_process
 
             if process is None:
-                no_terminated_msg = "\nNo process to terminate\n"
+                no_terminated_msg = "\n" + alert.get("progress", "no_progress") + "\n"
                 self.lines_history.append(no_terminated_msg)
                 return "\n".join(self.lines_history)
 
             try:
                 if process.returncode is not None:
-                    progress_end_msg = "\nProcess already ended\n"
+                    progress_end_msg = (
+                        "\n" + alert.get("progress", "progress_end") + "\n"
+                    )
                     self.lines_history.append(progress_end_msg)
                     return "\n".join(self.lines_history)
 
                 try:
-                    process.terminate()
+                    common.abort_process(process.pid)
                 except Exception:
-                    pass
+                    process.terminate()
 
                 await asyncio.sleep(0.5)
 
                 if process.returncode is None:
                     process.kill()
-                    force_terminated_msg = "\nProcess force terminated\n"
+                    force_terminated_msg = (
+                        "\n" + alert.get("progress", "force_terminated") + "\n"
+                    )
                     print(force_terminated_msg)
                     self.lines_history.append(force_terminated_msg)
                     await process.wait()
 
                 self.was_terminated_by_user = True
-                user_terminated_msg = "\nProcess terminated by user\n"
+                user_terminated_msg = (
+                    "\n" + alert.get("progress", "user_terminated") + "\n"
+                )
                 self.lines_history.append(user_terminated_msg)
                 print(user_terminated_msg)
             except Exception as e:
-                error_msg = f"Terminate error: {str(e)}"
+                error_msg = alert.get("progress", "terminate_error").format(str(e))
                 self.lines_history.append(error_msg)
                 print(error_msg.strip())
             finally:
@@ -361,7 +374,15 @@ class CommandRunner:
         return self.loss_tracker.get_plot_data()
 
     def is_loss_monitoring_active(self):
-        """检查损失监控是否活跃"""
+        """
+        Check if loss monitoring is active.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        bool: True if loss monitoring is active and there is an active process, False otherwise.
+        """
         return self._loss_monitoring_active and self.is_running()
 
 

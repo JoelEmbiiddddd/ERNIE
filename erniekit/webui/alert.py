@@ -208,7 +208,7 @@ ALERTS = {
             "en": "You are now playing: {}",
         }
     },
-    "thought_process": {"info": {"zh": "思考过程", "en": "Thought Process"}},
+    "thought_process": {"append": {"zh": "思考过程", "en": "Thought Process"}},
     "chatbot_api": {
         "text": {"zh": "API调用失败: {}", "en": "API call failed: {}"},
         "multimodal": {
