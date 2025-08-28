@@ -17,6 +17,7 @@ Process execution management, initiation, and supervision
 """
 
 import asyncio
+import glob
 import subprocess
 import os
 import re
@@ -24,8 +25,12 @@ import time
 import threading
 import pandas as pd
 from typing import AsyncGenerator, Tuple, Optional
+
+from visualdl import LogReader
+
 import erniekit.webui.common as common
 from erniekit.webui.alert import alert
+from erniekit.webui.common import config
 
 
 class CommandRunner:
@@ -400,17 +405,48 @@ class LossTracker:
         self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def start_monitoring(self):
+        """
+        Start the loss monitoring coroutine.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
         if self.monitoring_task is None or self.monitoring_task.done():
             self.is_monitoring = True
             self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
     def stop_monitoring(self):
+        """
+        Stop the loss monitoring coroutine and clear history data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
         self.is_monitoring = False
         if self.monitoring_task and not self.monitoring_task.done():
             self.monitoring_task.cancel()
         self.clear_history_data()
 
     async def _monitoring_loop(self):
+        """
+        Background monitoring loop that periodically reads plot data.
+
+        Continuously checks for new data while monitoring is active,
+        with a 3-second interval between checks.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+
         try:
             while self.is_monitoring:
                 try:
@@ -419,7 +455,7 @@ class LossTracker:
                         self.latest_plot_data = plot_data
                 except Exception as e:
                     print("Loss Tracker Error: ", e)
-                await asyncio.sleep(1)  # 从3秒减少到1秒
+                await asyncio.sleep(3)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -428,38 +464,128 @@ class LossTracker:
             self.is_monitoring = False
 
     def update_loss_config(self):
-        """更新日志配置参数"""
+        """
+        Update log configuration parameters including path, module and tag.
+
+        Retrieves user configurations and sets default values if none are provided.
+        Automatically finds the latest log file if no path is specified.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+
+        user_log_path = config.get_default_user_dict("basic", "log_path")
+        user_log_module = config.get_default_user_dict("basic", "log_module")
+        user_log_tag = config.get_default_user_dict("basic", "log_tag")
+        logging_dir = config.get_default_user_dict("train", "logging_dir")
+
         try:
-            self.log_module = "scalar"
-            self.log_tag = "train/loss"
+            if self.log_path is None and logging_dir != self.last_logging_path:
+                if user_log_path is None:
+                    search_pattern = os.path.join(logging_dir, "*.log")
+                    log_files = glob.glob(search_pattern)
+
+                    if log_files:
+                        latest_file = max(log_files, key=os.path.getmtime)
+                        self.log_path = os.path.abspath(latest_file)
+                        self.last_logging_path = logging_dir
+                    else:
+                        self.log_path = None
+                else:
+                    self.log_path = os.path.join(logging_dir, user_log_path)
+                    self.last_logging_path = logging_dir
+
+            if user_log_module is None:
+                self.log_module = "scalar"
+            else:
+                self.log_module = user_log_module
+
+            if user_log_tag is None:
+                self.log_tag = "train/loss"
+            else:
+                self.log_tag = user_log_tag
         except Exception:
             self.log_path = None
             self.log_module = "scalar"
             self.log_tag = "train/loss"
 
     def _read_plot_data(self):
+        """
+        Read and process plot data from the log file (internal method)
+
+        Reads log data using the configured parameters and returns it in
+        a DataFrame format with steps and corresponding loss values.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        pandas.DataFrame: DataFrame containing "Step" and "Loss" columns.
+        Returns default empty data if log path is None or error occurs.
+        """
+
         try:
             if self.log_path is None:
                 return pd.DataFrame({"Step": [0], "Loss": [0]})
 
-            # reader = LogReader(file_path=self.log_path)
-            # data = reader.get_data(self.log_module, self.log_tag)
+            reader = LogReader(file_path=self.log_path)
+            data = reader.get_data(self.log_module, self.log_tag)
 
-            # 暂时返回默认数据
-            return pd.DataFrame({"Step": [0], "Loss": [0]})
+            with self.lock:
+                self.loss_history = []
+                self.step_history = []
+
+                for item in data:
+                    value = item.value
+                    step = item.id
+                    self.loss_history.append(value)
+                    self.step_history.append(step)
+
+                if not self.loss_history:
+                    return pd.DataFrame({"Step": [0], "Loss": [0]})
+
+                return pd.DataFrame(
+                    {"Step": self.step_history, "Loss": self.loss_history}
+                )
 
         except Exception as e:
             print("Loss Tracker Error: ", e)
             return pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def get_plot_data(self):
+        """
+        Retrieve the latest plot data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        pandas.DataFrame: The most recently updated plot data containing
+        "Step" and "Loss" columns.
+        """
+
         return self.latest_plot_data
 
     def clear_history_data(self):
+        """
+        Clear all historical data and reset log path and plot data.
+
+        Uses a lock to ensure thread-safe data clearing.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        None
+        """
+
         with self.lock:
             self.step_history = []
             self.loss_history = []
-            self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
+            self.latest_plot_data = self.get_plot_data()
 
     def reset_latest_plot_data(self):
         self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
