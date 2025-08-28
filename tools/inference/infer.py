@@ -207,7 +207,7 @@ class Predictor:
 
         # init model & tokenizer
         self.tokenizer = Ernie4_5_Tokenizer.from_pretrained(
-            args.model_name_or_path, convert_from_torch=False, **download_source_kwargs
+            args.model_name_or_path, convert_from_hf=False, **download_source_kwargs
         )
         self.tokenizer.padding_side = "left"
         paddle.set_default_dtype(self.args.dtype)
@@ -230,13 +230,13 @@ class Predictor:
             use_flash_attention=True,
             moe_group="dummy",
             num_nextn_predict_layers=0,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
         self.model = Ernie4_5_MoeForCausalLM.from_pretrained(
             args.model_name_or_path,
             config=self.config,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
         gc.collect()

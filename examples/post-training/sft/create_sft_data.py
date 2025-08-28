@@ -87,7 +87,7 @@ def main():
 
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(
         model_args.model_name_or_path,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
     if tokenizer.vocab_size < 2**16 - 1:

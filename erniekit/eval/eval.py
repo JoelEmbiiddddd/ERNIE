@@ -244,7 +244,7 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
         model_args.model_name_or_path,
         dtype=dtype,
         quantization_config=quantization_config,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
     model_config.tensor_parallel_degree = finetuning_args.tensor_parallel_degree
@@ -300,14 +300,14 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
         model = model_class.from_pretrained(
             model_args.model_name_or_path,
             config=model_config,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
     else:
         model = model_class.from_config(
             model_config,
             dtype=dtype,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
 
@@ -330,7 +330,7 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
 
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(
         model_args.model_name_or_path,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
 

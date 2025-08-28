@@ -331,7 +331,7 @@ def run_dpo(
         model = model_class.from_pretrained(
             model_args.model_name_or_path,
             config=config,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
     else:
@@ -369,7 +369,7 @@ def run_dpo(
 
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(
         model_args.model_name_or_path,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
     logger.info("Loading model & tokenizer successfully !")

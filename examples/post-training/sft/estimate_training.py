@@ -203,7 +203,7 @@ def estimate_training(args):
         download_source_kwargs["download_hub"] = args.download_hub
 
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(
-        args.model_name_or_path, convert_from_torch=False, **download_source_kwargs
+        args.model_name_or_path, convert_from_hf=False, **download_source_kwargs
     )
     logger.info("Start to estimate max training steps...")
     dataset_config = {

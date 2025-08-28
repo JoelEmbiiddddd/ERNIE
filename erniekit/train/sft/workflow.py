@@ -290,7 +290,7 @@ def run_sft(
         model_args.model_name_or_path,
         dtype=dtype,
         quantization_config=quantization_config,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
     model_config.tensor_parallel_degree = finetuning_args.tensor_parallel_degree
@@ -356,7 +356,7 @@ def run_sft(
         model = model_class.from_pretrained(
             model_args.model_name_or_path,
             config=model_config,
-            convert_from_torch=False,
+            convert_from_hf=False,
             **download_source_kwargs,
         )
     else:
@@ -371,7 +371,7 @@ def run_sft(
     logger.info(f"{runtime_timer.log()}")
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(
         model_args.model_name_or_path,
-        convert_from_torch=False,
+        convert_from_hf=False,
         **download_source_kwargs,
     )
 

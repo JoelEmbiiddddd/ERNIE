@@ -234,9 +234,9 @@ if __name__ == "__main__":
         download_source_kwargs["download_hub"] = model_args.download_hub
 
     tokenizer = Ernie4_5_Tokenizer.from_pretrained(model_args.model_name_or_path,
-                                                convert_from_torch=False,
+                                                convert_from_hf=False,
                                                 **download_source_kwargs)
     config = Ernie4_5_MoeConfig.from_pretrained(model_args.model_name_or_path,
-                                                convert_from_torch=False,
+                                                convert_from_hf=False,
                                                 **download_source_kwargs)
     dpo_estimate_training(tokenizer, data_args, training_args, config)
