@@ -363,18 +363,44 @@ class CommandRunner:
             return "\n".join(self.lines_history)
 
     def clear_output(self):
-        """清空输出缓冲区"""
-        self.lines_history = []
+        """
+        Clear the current output buffer.
+
+        Args:
+            self: Instance reference
+
+        Returns:
+            str: Empty string indicating successful clearing
+        """
+        self.output_reset = True
+        self.current_output = ""
         self.progress_line_buffer = {}
         return ""
 
     def is_running(self) -> bool:
-        """检查是否有活动进程"""
+        """
+        Check if there is an active process being executed.
+
+        Args:
+            self: Instance reference
+
+        Returns:
+            bool: True if there is an active process, False otherwise
+        """
         process = self.current_process
         return process is not None and process.returncode is None
 
     def get_plot(self):
-        """获取绘图数据"""
+        """
+        Retrieve the plot data.
+
+        Args:
+        self: Instance reference
+
+        Returns:
+        The plot data obtained from the loss tracker.
+        """
+
         self.loss_tracker.update_loss_config()
         return self.loss_tracker.get_plot_data()
 
