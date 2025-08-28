@@ -1835,10 +1835,8 @@ def setup_update_stage(manager):
 
     train_component_elem_list = manager.get_dependencies("basic.best_config.train")
     basic_component_elem_list = manager.get_dependencies("basic.best_config.basic")
-    chat_component_elem_list = manager.get_dependencies("basic.best_config.chat")
     train_components = []
     basic_components = []
-    chat_components = []
 
     for full_id in train_component_elem_list["dependent_ids"]:
         if full_id.startswith("train."):
@@ -1851,12 +1849,6 @@ def setup_update_stage(manager):
             elem_id = full_id[len("basic") + 1 :]
             component = manager.get_elem_by_id("basic", elem_id)
             basic_components.append((full_id, component))
-
-    for full_id in chat_component_elem_list["dependent_ids"]:
-        if full_id.startswith("chat."):
-            elem_id = full_id[len("chat") + 1 :]
-            component = manager.get_elem_by_id("chat", elem_id)
-            chat_components.append((full_id, component))
 
     basic_train_all_components = train_components + basic_components
 
@@ -1905,9 +1897,6 @@ def setup_update_stage(manager):
         fn=on_component_value_change,
         inputs=[best_config_elem],
         outputs=[component for _, component in basic_train_all_components],
-    ).then(
-        fn=on_component_value_change_by_vl_model_name,
-        inputs=[component for _, component in chat_components],
     )
 
     model_name.change(

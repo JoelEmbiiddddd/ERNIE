@@ -202,12 +202,4 @@ def build(manager):
 
     manager.add_elem("chat", "chat_tab", chat_tab)
 
-    manager.add_module_dependency(
-        source_module_id="basic",
-        source_elem_id="best_config",
-        update_module_id="chat",
-        update_callback=control.model_update_callback,
-        exclude_components=None,
-    )
-
     control.chat_reaction(manager, CommandRunner())
