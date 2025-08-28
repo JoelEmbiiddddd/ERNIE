@@ -77,12 +77,10 @@ class CausalLMOutputWithCrossAttentionsAuto(CausalLMOutputWithCrossAttentions):
 
 logger = logging.getLogger(__name__)
 
-
 try:
     from fast_ln import fast_ln
 except ImportError:
     fast_ln = None
-
 
 try:
     from paddle.incubate.nn.functional import (
@@ -1792,8 +1790,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         self.all_hidden_states = None
         self.all_self_attns = None
         self.next_decoder_cache = None
-        self.inputs_embeds_extra = None
-        self.inputs_embeds_ori = None
+        self.inputs_embeds_cur_depth_list = None
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -1892,11 +1889,25 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             )
 
         if self.config.multi_token_pred_depth > 0:
-            self.inputs_embeds_extra = inputs_embeds[
+            inputs_embeds_extra = inputs_embeds[
                 :, -self.config.multi_token_pred_depth :, :
             ]  # [B, S, D]
             inputs_embeds = inputs_embeds[:, : -self.config.multi_token_pred_depth, :]
-            self.inputs_embeds_ori = inputs_embeds
+            inputs_embeds_ori = inputs_embeds
+            # 构建输入向量
+            inputs_embeds_cur_depth_list = []
+            for depth in range(self.config.multi_token_pred_depth):
+                inputs_embeds_cur_depth = paddle.concat(
+                    [
+                        inputs_embeds_ori[:, (depth + 1) :, :],
+                        inputs_embeds_extra[:, : (depth + 1), :],
+                    ],
+                    axis=1,
+                )
+                inputs_embeds_cur_depth_list.append(inputs_embeds_cur_depth)
+                self.inputs_embeds_cur_depth_list = paddle.concat(
+                    inputs_embeds_cur_depth_list
+                )
 
         global_mesh = global_mesh_starts_with_pp()
         if self.config.sequence_parallel:
@@ -1938,7 +1949,15 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         if self.config.tensor_parallel_degree > 1:
             hidden_states = dist.reshard(hidden_states, get_mesh(0), self.placements)
 
-        return hidden_states, attention_mask, position_ids
+        if self.config.multi_token_pred_depth > 0:
+            return (
+                hidden_states,
+                attention_mask,
+                position_ids,
+                self.inputs_embeds_cur_depth_list,
+            )
+        else:
+            return hidden_states, attention_mask, position_ids
 
     def decode_layer(
         self,
@@ -2000,7 +2019,9 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 all_router_loss += router_loss
         return hidden_states, all_router_loss
 
-    def mtp_layer(self, hidden_states, attention_mask, position_ids):
+    def mtp_layer(
+        self, hidden_states, inputs_embeds_cur_depth_list, attention_mask, position_ids
+    ):
         has_gradient = not hidden_states.stop_gradient
         mtp_outputs = []
         mtp_outputs.append(hidden_states)
@@ -2015,14 +2036,11 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 # hidden_states = hidden_states.reshape([-1, hidden_states.shape[0], hidden_states.shape[-1]])
                 hidden_states = paddle.transpose(hidden_states, [1, 0, 2])
 
-            # 构建输入向量
-            inputs_embeds_cur_depth = paddle.concat(
-                [
-                    self.inputs_embeds_ori[:, (depth + 1) :, :],
-                    self.inputs_embeds_extra[:, : (depth + 1), :],
-                ],
-                axis=1,
-            )
+            # # 构建输入向量
+            # inputs_embeds_cur_depth = paddle.concat(
+            #     [self.inputs_embeds_ori[:, (depth + 1) :, :], self.inputs_embeds_extra[:, : (depth + 1), :]], axis=1
+            # )
+            inputs_embeds_cur_depth = inputs_embeds_cur_depth_list[depth]
 
             # Norm&Concat
             inputs_embeds_cur_depth_norm = self.mtp_emb_norm[depth](
@@ -2103,9 +2121,17 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         if output_attentions is not None:
             self.config.output_attentions = output_attentions
 
-        hidden_states, attention_mask, position_ids = self.embed_inputs(
-            input_ids, attention_mask, position_ids
-        )
+        if self.config.multi_token_pred_depth > 0:
+            (
+                hidden_states,
+                attention_mask,
+                position_ids,
+                inputs_embeds_cur_depth_list,
+            ) = self.embed_inputs(input_ids, attention_mask, position_ids)
+        else:
+            hidden_states, attention_mask, position_ids = self.embed_inputs(
+                input_ids, attention_mask, position_ids
+            )
 
         self.all_hidden_states = () if output_hidden_states else None
         self.all_self_attns = () if output_attentions else None
@@ -2130,7 +2156,15 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
         # Multi Token Prediction
         mtp_outputs = []
         if self.config.multi_token_pred_depth > 0:
-            mtp_outputs = self.mtp_layer(hidden_states, attention_mask, position_ids)
+            inputs_embeds_cur_depth_list = paddle.split(
+                inputs_embeds_cur_depth_list, self.config.multi_token_pred_depth
+            )
+            mtp_outputs = self.mtp_layer(
+                hidden_states,
+                inputs_embeds_cur_depth_list,
+                attention_mask,
+                position_ids,
+            )
             hidden_states, mtp_outputs = mtp_outputs[0], mtp_outputs[1:]
         else:
             hidden_states = self.norm(hidden_states)
@@ -2185,13 +2219,17 @@ class ErniePretrainingCriterion(paddle.nn.Layer):
             reduction="none",
         )
 
-    def forward(
-        self, prediction_scores, masked_lm_labels, router_loss=None, mtp_logits=None
-    ):
+    def forward(self, prediction_scores, masked_lm_labels, router_loss=None):
         """
         calculates the final loss
         """
         if self.config.multi_token_pred_depth > 0:
+            # prediction_scores :[logits, mtp_logits]
+            logits = paddle.split(
+                prediction_scores, self.config.multi_token_pred_depth + 1
+            )
+            prediction_scores = logits[0]
+            mtp_logits = logits[1:]
             masked_lm_labels_ori = masked_lm_labels
             masked_lm_labels = masked_lm_labels[
                 :, : -self.config.multi_token_pred_depth
@@ -2393,12 +2431,24 @@ class ErnieModelAutoPP(ErnieModelAuto):
             hidden_states = args[0] if len(args) > 0 else args
             attention_mask = args[1] if len(args) > 1 else None
             position_ids = args[2] if len(args) > 2 else None
+
+            if len(args) == 2 and self.config.multi_token_pred_depth > 0:
+                hidden_states = args[0]
+                inputs_embeds_cur_depth_list = args[1]
         else:
             hidden_states = args
         if self.layer.layer_idx == 0:
-            hidden_states, attention_mask, position_ids = self.embed_inputs(
-                hidden_states, attention_mask, position_ids
-            )
+            if self.config.multi_token_pred_depth > 0:
+                (
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    inputs_embeds_cur_depth_list,
+                ) = self.embed_inputs(hidden_states, attention_mask, position_ids)
+            else:
+                hidden_states, attention_mask, position_ids = self.embed_inputs(
+                    hidden_states, attention_mask, position_ids
+                )
         hidden_states, _ = self.decode_layer(
             self.layer, hidden_states, attention_mask, position_ids
         )
@@ -2406,21 +2456,31 @@ class ErnieModelAutoPP(ErnieModelAuto):
             # Multi Token Prediction
             mtp_outputs = []
             if self.config.multi_token_pred_depth > 0:
+                inputs_embeds_cur_depth_list = paddle.split(
+                    inputs_embeds_cur_depth_list, self.config.multi_token_pred_depth
+                )
                 mtp_outputs = self.mtp_layer(
-                    hidden_states, attention_mask, position_ids
+                    hidden_states,
+                    inputs_embeds_cur_depth_list,
+                    attention_mask,
+                    position_ids,
                 )
                 hidden_states, mtp_outputs = mtp_outputs[0], mtp_outputs[1:]
             else:
                 hidden_states = self.norm(hidden_states)
             logits = self.lm_head(hidden_states)
-            mtp_logits = []
+
             if self.config.multi_token_pred_depth > 0:
-                mtp_logits = [
-                    self.lm_head(_hidden_states) for _hidden_states in mtp_outputs
-                ]
-            return logits, mtp_logits
+                mtp_logits = [logits]
+                for _hidden_states in mtp_outputs:
+                    mtp_logits.append(self.lm_head(_hidden_states))
+                logits = paddle.concat(mtp_logits)
+            return logits
         else:
-            return hidden_states
+            if self.config.multi_token_pred_depth > 0:
+                return hidden_states, inputs_embeds_cur_depth_list
+            else:
+                return hidden_states
 
 
 class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
@@ -2612,7 +2672,6 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
-
         outputs = self.ernie(
             input_ids,
             position_ids=position_ids,
@@ -2633,11 +2692,11 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
             hidden_states,
         )
 
-        mtp_logits = []
+        mtp_logits = [logits]
         if len(mtp_outputs) > 0:
-            mtp_logits = [
-                self.lm_head(_hidden_states) for _hidden_states in mtp_outputs
-            ]
+            for _hidden_states in mtp_outputs:
+                mtp_logits.append(self.lm_head(_hidden_states))
+            logits = paddle.concat(mtp_logits)
 
         if return_dict:
             if labels is not None:
@@ -2659,4 +2718,4 @@ class ErnieForCausalLMAuto(ErniePretrainedModelAuto):
             if hasattr(self.config, "use_moe") and self.config.use_moe
             else None
         )
-        return self.criterion(logits, labels, router_loss, mtp_logits)
+        return self.criterion(logits, labels, router_loss)
