@@ -92,6 +92,7 @@ def export_reaction(manager, runner, module):
     """
     setup_command_buttons(manager, runner, module)
     hide_export_and_eval_tab(manager)
+    setup_update_stage(manager)
 
 
 def chat_reaction(manager, runner):
@@ -133,7 +134,6 @@ def train_reaction(manager, runner, module):
     setup_save_dataset_btn_update(manager, module, "text")
     train_plot_and_progress_reaction(manager, runner)
     train_dataset_row_show_up(manager)
-    setup_update_stage(manager)
 
 
 def train_update_by_basic_model_name_group(
@@ -453,20 +453,17 @@ def hide_export_and_eval_tab(manager):
     Args:
         manager: The UI or state manager controlling tab visibility
     """
-    export_tab = manager.get_elem_by_id("export", "export_tab")
     eval_tab = manager.get_elem_by_id("eval", "eval_tab")
     model_name = manager.get_elem_by_id("basic", "model_name")
 
     def hide_tab_by_model_name(model_name_value):
 
         if config.is_vl_models(model_name_value):
-            return gr.update(visible=False), gr.update(visible=False)
+            return gr.update(visible=False)
         else:
-            return gr.update(visible=True), gr.update(visible=True)
+            return gr.update(visible=True)
 
-    model_name.change(
-        fn=hide_tab_by_model_name, inputs=model_name, outputs=[export_tab, eval_tab]
-    )
+    model_name.change(fn=hide_tab_by_model_name, inputs=model_name, outputs=[eval_tab])
 
 
 def chat_download_log(manager):
@@ -1838,8 +1835,10 @@ def setup_update_stage(manager):
 
     train_component_elem_list = manager.get_dependencies("basic.best_config.train")
     basic_component_elem_list = manager.get_dependencies("basic.best_config.basic")
+    chat_component_elem_list = manager.get_dependencies("basic.best_config.chat")
     train_components = []
     basic_components = []
+    chat_components = []
 
     for full_id in train_component_elem_list["dependent_ids"]:
         if full_id.startswith("train."):
@@ -1853,7 +1852,14 @@ def setup_update_stage(manager):
             component = manager.get_elem_by_id("basic", elem_id)
             basic_components.append((full_id, component))
 
-    all_components = train_components + basic_components
+    for full_id in chat_component_elem_list["dependent_ids"]:
+        if full_id.startswith("chat."):
+            elem_id = full_id[len("chat") + 1 :]
+            component = manager.get_elem_by_id("chat", elem_id)
+            chat_components.append((full_id, component))
+
+    basic_train_all_components = train_components + basic_components
+
     BASIC_CONFIG = "basic"
     BEST_CONFIG_KEY = "best_config"
     VL_SFT_VALUE = "VL-SFT"
@@ -1862,10 +1868,13 @@ def setup_update_stage(manager):
         manager._update_component_value(BASIC_CONFIG, BEST_CONFIG_KEY, value)
         updates = model_update_callback(manager, value)
 
-        return [updates.get(full_id, gr.update()) for full_id, _ in all_components]
+        return [
+            updates.get(full_id, gr.update())
+            for full_id, _ in basic_train_all_components
+        ]
 
     def on_component_value_change_by_vl_model_name(model_name):
-        base_updates = [gr.update() for _ in all_components]
+        base_updates = [gr.update() for _ in basic_train_all_components]
         if config.is_vl_models(model_name):
             vl_updates = on_component_value_change(VL_SFT_VALUE)
             return vl_updates
@@ -1895,7 +1904,10 @@ def setup_update_stage(manager):
     best_config_elem.change(
         fn=on_component_value_change,
         inputs=[best_config_elem],
-        outputs=[component for _, component in all_components],
+        outputs=[component for _, component in basic_train_all_components],
+    ).then(
+        fn=on_component_value_change_by_vl_model_name,
+        inputs=[component for _, component in chat_components],
     )
 
     model_name.change(
@@ -1905,7 +1917,7 @@ def setup_update_stage(manager):
     ).then(
         fn=on_component_value_change_by_vl_model_name,
         inputs=[model_name],
-        outputs=[component for _, component in all_components],
+        outputs=[component for _, component in basic_train_all_components],
     )
 
 
@@ -1949,7 +1961,7 @@ def setup_chatbot_response(manager):
         img_url_input,
         video_url_input,
     ):
-        update_config_yaml(manager, "chat_yaml_path", "chat")
+        # update_config_yaml(manager, "chat_yaml_path", "chat")
         url_input = {
             "image": img_url_input,
             "video": video_url_input,

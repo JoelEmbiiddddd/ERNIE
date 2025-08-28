@@ -17,18 +17,13 @@ Process execution management, initiation, and supervision
 """
 
 import asyncio
-import glob
+import subprocess
 import os
 import re
-import subprocess
+import time
 import threading
-
 import pandas as pd
-from visualdl import LogReader
-
-from erniekit.webui import common
-from erniekit.webui.alert import alert
-from erniekit.webui.common import config
+from typing import AsyncGenerator, Tuple, Optional
 
 
 class CommandRunner:
@@ -45,36 +40,35 @@ class CommandRunner:
         self.loss_tracker = LossTracker()
         self._loss_monitoring_active = False
 
-    async def execute(self, command: str):
-        """
-        Asynchronously execute a shell command and stream its output.
+        # 实时更新优化
+        self.last_update_time = 0
+        self.min_update_interval = 0.05  # 50ms最小间隔，更频繁更新
+        self.force_update_threshold = 0.2  # 200ms强制更新
+        self.line_count_since_update = 0
+        self.max_lines_before_update = 3  # 每3行就更新一次
 
-        Args:
-            self: Instance reference
-            command (str):  command to execute
-
-        Returns:
-            AsyncGenerator[str, None]: Asynchronous generator yielding output lines
-        """
+    async def execute(self, command: str) -> AsyncGenerator[Tuple[str, float], None]:
+        """超实时版本的执行函数"""
         self.lines_history = []
         self.progress_line_buffer = {}
+        self.last_update_time = time.time()
+        self.line_count_since_update = 0
+
         separator = "\n" + "-" * 50 + "\n"
-        start_text = (
-            alert.get("progress", "run_command").format(separator, command) + "\n"
-        )
-        self.lines_history.extend([start_text])
+        start_text = f"{separator}Executing: {command}\n"
+        self.lines_history.append(start_text)
         self._loss_monitoring_active = True
         self.loss_tracker.start_monitoring()
 
         yield "\n".join(self.lines_history), 0
+        print(start_text, flush=True)
 
-        print("\n" + start_text, flush=True)
         process = None
-
         try:
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             env["FORCE_COLOR"] = "1"
+
             process = await asyncio.create_subprocess_shell(
                 command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
             )
@@ -88,29 +82,43 @@ class CommandRunner:
                     break
 
                 buffer += chunk
+                current_time = time.time()
+
                 while b"\n" in buffer or b"\r" in buffer:
                     line, buffer = self._extract_next_line(buffer)
                     if not line:
                         break
 
                     line_str = line.decode("utf-8", errors="replace")
-
                     print(line_str, end="", flush=True)
 
                     line_clean = re.sub(r"\x1b\[[0-9;]*[mGKH]", "", line_str)
                     line_clean = line_clean.rstrip("\n\r").strip()
 
                     if line_clean:
-                        should_update = self._process_line(line_clean)
+                        should_update = self._process_line_realtime(line_clean)
                         self._parse_progress(line_clean)
+                        self.line_count_since_update += 1
 
-                        if should_update:
+                        time_since_update = current_time - self.last_update_time
+
+                        if (
+                            should_update
+                            or self.line_count_since_update
+                            >= self.max_lines_before_update
+                            or time_since_update > self.min_update_interval
+                            or time_since_update > self.force_update_threshold
+                        ):
+
                             yield (
                                 "\n".join(self.lines_history),
                                 self.compute_percentage(self.current, self.total),
                             )
+                            self.last_update_time = current_time
+                            self.line_count_since_update = 0
+
         except Exception as e:
-            error_msg = alert.get("progress", "execution_error").format(str(e))
+            error_msg = f"Execution error: {str(e)}"
             self.lines_history.append(error_msg)
             print(error_msg, flush=True)
             yield (
@@ -120,10 +128,11 @@ class CommandRunner:
 
         finally:
             self._flush_progress_buffer()
+
             if process:
                 return_code = await process.wait()
                 if return_code == 0:
-                    success_msg = alert.get("progress", "progress_success")
+                    success_msg = "Command completed successfully!"
                     self.lines_history.append(f"\n{success_msg}")
                     print(f"\n{success_msg}", flush=True)
                     yield (
@@ -134,14 +143,143 @@ class CommandRunner:
             self.current_process = None
             self.loss_tracker.stop_monitoring()
 
-    def _extract_next_line(self, buffer):
-        """
-        Extract a complete line from the buffer, handling both LF (\n) and CR+LF (\r\n) endings.
+    def _process_line_realtime(self, line_clean: str) -> bool:
+        """实时处理每一行，返回是否需要立即更新UI"""
+        progress_key = self._get_progress_key(line_clean)
 
-        Args:
-            self: Instance reference
-            buffer (bytes): Byte buffer containing partial or complete lines
-        """
+        if progress_key:
+            self.progress_line_buffer[progress_key] = line_clean
+            self._update_progress_in_history(progress_key, line_clean)
+            return True
+        else:
+            self.lines_history.append(line_clean)
+
+            if self._is_important_line(line_clean):
+                return True
+
+            return False
+
+    def _is_important_line(self, line: str) -> bool:
+        important_keywords = [
+            "error",
+            "Error",
+            "ERROR",
+            "warning",
+            "Warning",
+            "WARNING",
+            "failed",
+            "Failed",
+            "FAILED",
+            "success",
+            "Success",
+            "SUCCESS",
+            "complete",
+            "Complete",
+            "COMPLETE",
+            "finished",
+            "Finished",
+            "FINISHED",
+            "starting",
+            "Starting",
+            "STARTING",
+            "epoch",
+            "Epoch",
+            "EPOCH",
+            "step:",
+            "Step:",
+            "STEP:",
+            "loss:",
+            "Loss:",
+            "LOSS:",
+            "%",
+        ]
+
+        return any(keyword in line for keyword in important_keywords)
+
+    def _should_show_progress(self, line: str) -> bool:
+        return True
+
+    def _get_progress_key(self, line: str) -> Optional[str]:
+        patterns = [
+            r"(Loading\s+\w+):\s*\d+%",
+            r"(\w+\s+\w+):\s*\d+%",
+            r"(Epoch\s+\d+)",
+            r"(Step\s+\d+)",
+            r"(\d+%)",
+            r"(\w+):\s*\d+/\d+",
+            r"(Progress)",
+            r"(Training)",
+            r"(Validation)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        # 如果包含进度相关关键词，也当作进度
+        progress_keywords = ["progress", "epoch", "step", "batch", "%", "/", "loss"]
+        for keyword in progress_keywords:
+            if keyword in line.lower():
+                # 使用行的前几个词作为key
+                words = line.split()
+                if len(words) > 0:
+                    return words[0]
+
+        return None
+
+    def _update_progress_in_history(self, progress_key: str, line: str):
+        """更新历史记录中的进度行"""
+        # 查找现有的进度行并替换
+        for i, history_line in enumerate(self.lines_history):
+            if progress_key in history_line and self._get_progress_key(history_line):
+                self.lines_history[i] = line
+                return
+
+        # 如果没找到，直接添加
+        self.lines_history.append(line)
+
+    def _flush_progress_buffer(self):
+        """刷新进度缓冲区"""
+        for progress_key, line in self.progress_line_buffer.items():
+            self._update_progress_in_history(progress_key, line)
+
+    def _parse_progress(self, line: str):
+        """解析进度信息 - 更全面的解析"""
+        try:
+            # 解析各种进度格式
+            patterns = [
+                (
+                    r"global_step:\s*(\d+)",
+                    lambda m: setattr(self, "current", int(m.group(1))),
+                ),
+                (r"step:\s*(\d+)", lambda m: setattr(self, "current", int(m.group(1)))),
+                (
+                    r"(\d+)/(\d+)",
+                    lambda m: (
+                        setattr(self, "current", int(m.group(1))),
+                        setattr(self, "total", int(m.group(2))),
+                    ),
+                ),
+                (r"(\d+)%", lambda m: setattr(self, "percentage", int(m.group(1)))),
+                (
+                    r"epoch:\s*(\d+)",
+                    lambda m: setattr(self, "current", int(m.group(1))),
+                ),
+            ]
+
+            for pattern, action in patterns:
+                match = re.search(pattern, line, re.IGNORECASE)
+                if match:
+                    action(match)
+                    break
+
+        except Exception:
+            # 忽略解析错误，不影响显示
+            pass
+
+    def _extract_next_line(self, buffer):
+        """提取下一行"""
         nl_pos = buffer.find(b"\n")
         cr_pos = buffer.find(b"\r")
 
@@ -156,168 +294,49 @@ class CommandRunner:
 
         return buffer[:end_pos], buffer[end_pos:]
 
-    def _process_line(self, line_clean):
-        """
-        Process a single line of output to determine if frontend updates are required.
-
-        Args:
-            self: Instance reference
-            line_clean (str): Cleaned output line without line endings
-
-        Returns:
-            bool: True if frontend update is needed, False otherwise
-        """
-        progress_key = self._get_progress_key(line_clean)
-        if progress_key:
-            self.progress_line_buffer[progress_key] = line_clean
-
-            if self._should_show_progress(line_clean):
-                self._update_progress_in_history(progress_key, line_clean)
-                return True
-            return False
-        else:
-            self.lines_history.append(line_clean)
-            return True
-
-    def _get_progress_key(self, line):
-        """
-        Extract a key from the line to identify the associated progress bar.
-
-        Args:
-            self: Instance reference
-            line (str): Line of text potentially containing progress information
-
-        Returns:
-            Optional[str]: Progress bar identifier if found, None otherwise
-        """
-        patterns = [
-            r"(Loading\s+\w+):\s*\d+%",
-            r"(\w+\s+\w+):\s*\d+%",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, line)
-            if match:
-                return match.group(1)
-
-        return None
-
-    def _should_show_progress(self, line):
-        """
-        Determine if a progress line should be displayed based on predefined criteria.
-
-        Args:
-            self: Instance reference
-            line (str): Line of text potentially containing progress information
-
-        Returns:
-            bool: True if the progress should be shown, False otherwise
-        """
-        percent_match = re.search(r"(\d+)%", line)
-        if percent_match:
-            percent = int(percent_match.group(1))
-            return percent == 0 or percent == 100 or percent % 10 == 0
-
-        return (
-            "100%" in line or "complete" in line.lower() or "finished" in line.lower()
-        )
-
-    def _update_progress_in_history(self, progress_key, line):
-        """
-        Update or insert a progress bar line in the history buffer.
-
-        Args:
-            self: Instance reference
-            progress_key (str): Unique identifier for the progress bar
-            line (str): New progress line to update/insert
-        """
-        for i, history_line in enumerate(self.lines_history):
-            if progress_key in history_line and self._get_progress_key(history_line):
-                self.lines_history[i] = line
-                return
-
-        self.lines_history.append(line)
-
-    def _flush_progress_buffer(self):
-        """
-        Flush all buffered progress updates to the history buffer.
-
-        Args:
-            self: Instance reference
-
-        """
-        for progress_key, line in self.progress_line_buffer.items():
-            self._update_progress_in_history(progress_key, line)
-
-    def _parse_progress(self, line):
-        """
-        Parse progress information (e.g., global_step, X/Y format) from a line of text.
-
-        Args:
-            self: Instance reference
-            line (str): Line of text potentially containing progress data
-        """
-        try:
-            step_match = re.search(r"global_step:\s*(\d+)", line)
-            if step_match:
-                step = int(step_match.group(1))
-                self.current = step
-                return
-
-            ratio_match = re.search(r"(\d+)/(\d+)", line)
-            if ratio_match:
-                self.current = int(ratio_match.group(1))
-                self.total = int(ratio_match.group(2))
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+    def compute_percentage(self, current: int, total: int) -> float:
+        """计算进度百分比"""
+        if total > 0:
+            progress_ratio = current / total
+            self.percentage = progress_ratio * 100
+        return self.percentage
 
     async def stop(self):
-        """
-        Terminate the currently running process asynchronously.
-
-        Args:
-            self: Instance reference
-        """
+        """终止当前进程"""
         async with self.process_lock:
             process = self.current_process
 
             if process is None:
-                no_terminated_msg = "\n" + alert.get("progress", "no_progress") + "\n"
+                no_terminated_msg = "\nNo process to terminate\n"
                 self.lines_history.append(no_terminated_msg)
                 return "\n".join(self.lines_history)
 
             try:
                 if process.returncode is not None:
-                    progress_end_msg = (
-                        "\n" + alert.get("progress", "progress_end") + "\n"
-                    )
+                    progress_end_msg = "\nProcess already ended\n"
                     self.lines_history.append(progress_end_msg)
                     return "\n".join(self.lines_history)
 
                 try:
-                    common.abort_process(process.pid)
-                except Exception:
                     process.terminate()
+                except Exception:
+                    pass
 
                 await asyncio.sleep(0.5)
 
                 if process.returncode is None:
                     process.kill()
-                    force_terminated_msg = (
-                        "\n" + alert.get("progress", "force_terminated") + "\n"
-                    )
+                    force_terminated_msg = "\nProcess force terminated\n"
                     print(force_terminated_msg)
                     self.lines_history.append(force_terminated_msg)
                     await process.wait()
 
                 self.was_terminated_by_user = True
-                user_terminated_msg = (
-                    "\n" + alert.get("progress", "user_terminated") + "\n"
-                )
+                user_terminated_msg = "\nProcess terminated by user\n"
                 self.lines_history.append(user_terminated_msg)
                 print(user_terminated_msg)
             except Exception as e:
-                error_msg = alert.get("progress", "terminate_error").format(str(e))
+                error_msg = f"Terminate error: {str(e)}"
                 self.lines_history.append(error_msg)
                 print(error_msg.strip())
             finally:
@@ -326,77 +345,23 @@ class CommandRunner:
             return "\n".join(self.lines_history)
 
     def clear_output(self):
-        """
-        Clear the current output buffer.
-
-        Args:
-            self: Instance reference
-
-        Returns:
-            str: Empty string indicating successful clearing
-        """
-        self.output_reset = True
-        self.current_output = ""
+        """清空输出缓冲区"""
+        self.lines_history = []
         self.progress_line_buffer = {}
         return ""
 
     def is_running(self) -> bool:
-        """
-        Check if there is an active process being executed.
-
-        Args:
-            self: Instance reference
-
-        Returns:
-            bool: True if there is an active process, False otherwise
-        """
+        """检查是否有活动进程"""
         process = self.current_process
         return process is not None and process.returncode is None
 
-    def compute_percentage(self, current, total):
-        """
-        Calculate the percentage of progress.
-
-        Args:
-        self: Instance reference
-        current: Current progress value
-        total: Total progress value
-
-        Returns:
-        float: The computed percentage. Returns the existing percentage if total is 0.
-        """
-
-        if total == 0:
-            return self.percentage
-        progress_ratio = current / total
-        self.percentage = progress_ratio * 100
-
-        return self.percentage
-
     def get_plot(self):
-        """
-        Retrieve the plot data.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        The plot data obtained from the loss tracker.
-        """
-
+        """获取绘图数据"""
         self.loss_tracker.update_loss_config()
         return self.loss_tracker.get_plot_data()
 
     def is_loss_monitoring_active(self):
-        """
-        Check if loss monitoring is active.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        bool: True if loss monitoring is active and there is an active process, False otherwise.
-        """
+        """检查损失监控是否活跃"""
         return self._loss_monitoring_active and self.is_running()
 
 
@@ -414,48 +379,17 @@ class LossTracker:
         self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def start_monitoring(self):
-        """
-        Start the loss monitoring coroutine.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        None
-        """
         if self.monitoring_task is None or self.monitoring_task.done():
             self.is_monitoring = True
             self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
     def stop_monitoring(self):
-        """
-        Stop the loss monitoring coroutine and clear history data.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        None
-        """
         self.is_monitoring = False
         if self.monitoring_task and not self.monitoring_task.done():
             self.monitoring_task.cancel()
         self.clear_history_data()
 
     async def _monitoring_loop(self):
-        """
-        Background monitoring loop that periodically reads plot data.
-
-        Continuously checks for new data while monitoring is active,
-        with a 3-second interval between checks.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        None
-        """
-
         try:
             while self.is_monitoring:
                 try:
@@ -464,7 +398,7 @@ class LossTracker:
                         self.latest_plot_data = plot_data
                 except Exception as e:
                     print("Loss Tracker Error: ", e)
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)  # 从3秒减少到1秒
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -473,128 +407,38 @@ class LossTracker:
             self.is_monitoring = False
 
     def update_loss_config(self):
-        """
-        Update log configuration parameters including path, module and tag.
-
-        Retrieves user configurations and sets default values if none are provided.
-        Automatically finds the latest log file if no path is specified.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        None
-        """
-
-        user_log_path = config.get_default_user_dict("basic", "log_path")
-        user_log_module = config.get_default_user_dict("basic", "log_module")
-        user_log_tag = config.get_default_user_dict("basic", "log_tag")
-        logging_dir = config.get_default_user_dict("train", "logging_dir")
-
+        """更新日志配置参数"""
         try:
-            if self.log_path is None and logging_dir != self.last_logging_path:
-                if user_log_path is None:
-                    search_pattern = os.path.join(logging_dir, "*.log")
-                    log_files = glob.glob(search_pattern)
-
-                    if log_files:
-                        latest_file = max(log_files, key=os.path.getmtime)
-                        self.log_path = os.path.abspath(latest_file)
-                        self.last_logging_path = logging_dir
-                    else:
-                        self.log_path = None
-                else:
-                    self.log_path = os.path.join(logging_dir, user_log_path)
-                    self.last_logging_path = logging_dir
-
-            if user_log_module is None:
-                self.log_module = "scalar"
-            else:
-                self.log_module = user_log_module
-
-            if user_log_tag is None:
-                self.log_tag = "train/loss"
-            else:
-                self.log_tag = user_log_tag
+            self.log_module = "scalar"
+            self.log_tag = "train/loss"
         except Exception:
             self.log_path = None
             self.log_module = "scalar"
             self.log_tag = "train/loss"
 
     def _read_plot_data(self):
-        """
-        Read and process plot data from the log file (internal method)
-
-        Reads log data using the configured parameters and returns it in
-        a DataFrame format with steps and corresponding loss values.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        pandas.DataFrame: DataFrame containing "Step" and "Loss" columns.
-        Returns default empty data if log path is None or error occurs.
-        """
-
         try:
             if self.log_path is None:
                 return pd.DataFrame({"Step": [0], "Loss": [0]})
 
-            reader = LogReader(file_path=self.log_path)
-            data = reader.get_data(self.log_module, self.log_tag)
+            # reader = LogReader(file_path=self.log_path)
+            # data = reader.get_data(self.log_module, self.log_tag)
 
-            with self.lock:
-                self.loss_history = []
-                self.step_history = []
-
-                for item in data:
-                    value = item.value
-                    step = item.id
-                    self.loss_history.append(value)
-                    self.step_history.append(step)
-
-                if not self.loss_history:
-                    return pd.DataFrame({"Step": [0], "Loss": [0]})
-
-                return pd.DataFrame(
-                    {"Step": self.step_history, "Loss": self.loss_history}
-                )
+            # 暂时返回默认数据
+            return pd.DataFrame({"Step": [0], "Loss": [0]})
 
         except Exception as e:
             print("Loss Tracker Error: ", e)
             return pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def get_plot_data(self):
-        """
-        Retrieve the latest plot data.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        pandas.DataFrame: The most recently updated plot data containing
-        "Step" and "Loss" columns.
-        """
-
         return self.latest_plot_data
 
     def clear_history_data(self):
-        """
-        Clear all historical data and reset log path and plot data.
-
-        Uses a lock to ensure thread-safe data clearing.
-
-        Args:
-        self: Instance reference
-
-        Returns:
-        None
-        """
-
         with self.lock:
             self.step_history = []
             self.loss_history = []
-            self.latest_plot_data = self.get_plot_data()
+            self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
 
     def reset_latest_plot_data(self):
         self.latest_plot_data = pd.DataFrame({"Step": [0], "Loss": [0]})
