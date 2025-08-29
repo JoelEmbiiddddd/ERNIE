@@ -1,4 +1,4 @@
-# 
+#
 stage: VL-SFT
 
 # model
@@ -9,8 +9,8 @@ fuse_rms_norm: false
 use_flash_attention: 1
 use_moe: true
 fine_tuning: Full
-use_sparse_head_and_loss_fn: true
-use_recompute_loss_fn: true
+use_sparse_head_and_loss_fn: false
+use_recompute_loss_fn: false
 moe_group: "mp"
 moe_use_aux_free_update_coef: 0.0
 moe_aux_loss_lambda: 0.0
@@ -54,8 +54,6 @@ same_data: true
 freeze_config: "freeze_vision"
 trigger_data_prob: 1.0
 from_scratch: 0
-load_sharded_model: true
-save_sharded_model: true
 gc_interval: 100000
 drop_history_with_k: true
 overwrite_output_dir: true
