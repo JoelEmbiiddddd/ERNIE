@@ -637,7 +637,6 @@ def run_vl_sft(
                 "in_tokens": True,  # True for Text SFT
                 "tokenizer": tokenizer,
                 "number_of_samples_each_epoch": data_args.num_samples_each_epoch,
-                "pseudo_strategy": finetuning_args.pseudo_strategy,
                 "example_from_same_task_prob": finetuning_args.example_from_same_task_prob,
                 "pseudo_sampling_prob": finetuning_args.pseudo_sampling_prob,
                 "trigger_data_prob": finetuning_args.trigger_data_prob,
