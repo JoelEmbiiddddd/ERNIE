@@ -163,7 +163,7 @@ def train_update_by_basic_model_name_combine(manager, dataset_elem, elem_type):
         dataset_elem (Dataset): Dataset element for training data
         elem_type (str): Element type for training data
     Returns:
-        None
+        None.
     """
     train_update_by_basic_model_name(
         manager,
