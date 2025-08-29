@@ -139,12 +139,32 @@ def train_reaction(manager, runner, module):
 def train_update_by_basic_model_name_group(
     manager, train_dataset_elem, eval_dataset_elem, text_dataset_elem
 ):
+    """
+    Perform train configuration reactions for model setup.
+    Args:
+        manager (manager): Configuration manager for component values
+        train_dataset_elem (Dataset): Dataset element for training data
+        eval_dataset_elem (Dataset): Dataset element for eval data
+        text_dataset_elem (Dataset): Dataset element for text data
+    Returns:
+        None
+    """
+
     train_update_by_basic_model_name_combine(manager, train_dataset_elem, "train")
     train_update_by_basic_model_name_combine(manager, eval_dataset_elem, "eval")
     train_update_by_basic_model_name_combine(manager, text_dataset_elem, "text")
 
 
 def train_update_by_basic_model_name_combine(manager, dataset_elem, elem_type):
+    """
+    Perform train configuration reactions for model setup.
+    Args:
+        manager (manager): Configuration manager for component values
+        dataset_elem (Dataset): Dataset element for training data
+        elem_type (str): Element type for training data
+    Returns:
+        None
+    """
     train_update_by_basic_model_name(
         manager,
         elem_type,
@@ -161,6 +181,16 @@ def train_update_by_basic_model_name_combine(manager, dataset_elem, elem_type):
 
 
 def train_update_by_best_config(manager, elem_type, row_components, form_data_state):
+    """
+    Update the dataset row based on the selected best config.
+    Args:
+        manager (manager): Configuration manager for component values
+        elem_type (str): Electronic type of the dataset row
+        row_components (list): List of row components
+        form_data_state (dict): Dictionary of form data state
+    Returns:
+        None
+    """
     best_config = manager.get_elem_by_id("basic", "best_config")
 
     def switch_dataset_by_best_config(best_config_value, current_form_data):
@@ -182,28 +212,19 @@ def train_update_by_best_config(manager, elem_type, row_components, form_data_st
     )
 
 
-# def train_update_dataset_row_init_load(manager, elem_type, dataset_type, row_components, form_data_state):
-#
-#     def init_dataset_row(form_data):
-#         user_config_dataset = config.get_default_user_dict(f"train_{elem_type.lower()}",f"{dataset_type}_dataset" )
-#         return update_dataset_row_components(
-#             user_config_dataset, form_data, row_components, False
-#         )
-#
-#     all_components = []
-#     for row in row_components:
-#         all_components.extend(row)
-#
-#     manager.demo.load(
-#         fn=init_dataset_row,
-#         inputs=[form_data_state],
-#         outputs=[form_data_state] + all_components,
-#     )
-
-
 def train_update_by_basic_model_name(
     manager, elem_type, row_components, form_data_state
 ):
+    """
+    Update the dataset row based on the selected basic model.
+    Args:
+        manager (manager): Configuration manager for component values
+        elem_type (str): Electronic type of the dataset row
+        row_components (list): List of row components
+        form_data_state (dict): Dictionary of form data state
+    Returns:
+        None
+    """
     model_name = manager.get_elem_by_id("basic", "model_name")
     stage = manager.get_elem_by_id("train", "stage")
     dataset_group = manager.get_elem_by_id("train", f"{elem_type}_dataset_group")
@@ -246,7 +267,16 @@ def train_update_by_basic_model_name(
 def update_dataset_row_components(
     user_dataset_config, current_form_data, train_row_components, is_vl_model
 ):
-
+    """
+    Update the dataset row based on the selected dataset row.
+    Args:
+        user_dataset_config (dict): Configuration manager for component values
+        current_form_data (dict): Dictionary of form data state
+        train_row_components (list): List of row components
+        is_vl_model (bool): Whether the dataset row is vl model or not
+    Returns:
+        list: List of updated components
+    """
     if (
         not user_dataset_config
         or user_dataset_config == ""
@@ -387,6 +417,16 @@ def train_vl_reaction_for_dataset_row(
 
 
 def change_language_in_config(manager):
+    """
+    Handle changes to the language setting in the configuration
+
+    Updates the configuration when the language selection changes, ensuring
+    consistency across different parts of the application.
+
+    Args:
+        manager: The dataset or training manager instance that handles
+            dataset operations and state management
+    """
     language = manager.get_elem_by_id("basic", "language")
 
     def change_config_language(language_value):
