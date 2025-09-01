@@ -240,7 +240,7 @@ class ExampleSet:
                 self.exs = [json.loads(line) for line in fin]
         else:
             raise ValueError(f"Unsupported file type: {self._file_name}")
-        
+
         def trans_query_response_type(ex):
             text_idx, image_idx, video_idx = 0, 0, 0
             text_info = []
@@ -266,37 +266,47 @@ class ExampleSet:
                 mask_flag = True
                 assert len(q_r) == 2, "query and response must be a pair, but got {q_r}"
                 for text in q_r:
-                    parts = re.split(r'(<image>|<video>)', text)
+                    parts = re.split(r"(<image>|<video>)", text)
                     for part in parts:
                         if part == "<image>":
                             try:
-                                image_info.append({
-                                    "matched_text_index": text_idx,
-                                    "image_url": images[image_idx]
-                                })
-                            except:
-                                raise ValueError(f"number of <image> token should match len(images)")
+                                image_info.append(
+                                    {
+                                        "matched_text_index": text_idx,
+                                        "image_url": images[image_idx],
+                                    }
+                                )
+                            except Exception:
+                                raise ValueError(
+                                    "number of <image> token should match len(images)"
+                                )
                             order_type.append("image")
                             order_index.append(image_idx)
                             order_mask.append(int(mask_flag))
                             image_idx += 1
                         elif part == "<video>":
                             try:
-                                video_info.append({
-                                    "matched_text_index": text_idx,
-                                    "video_url": videos[video_idx]
-                                })
-                            except:
-                                raise ValueError(f"number of <video> token should match len(videos)")
+                                video_info.append(
+                                    {
+                                        "matched_text_index": text_idx,
+                                        "video_url": videos[video_idx],
+                                    }
+                                )
+                            except Exception:
+                                raise ValueError(
+                                    "number of <video> token should match len(videos)"
+                                )
                             order_type.append("video")
                             order_index.append(video_idx)
                             order_mask.append(int(mask_flag))
                             video_idx += 1
                         elif part:
-                            text_info.append({
-                                "text": part,
-                                "tag": "mask" if mask_flag else "no_mask"
-                            })
+                            text_info.append(
+                                {
+                                    "text": part,
+                                    "tag": "mask" if mask_flag else "no_mask",
+                                }
+                            )
                             order_type.append("text")
                             order_index.append(text_idx)
                             order_mask.append(int(mask_flag))
@@ -310,7 +320,7 @@ class ExampleSet:
             new_ex["order"] = {
                 "type": order_type,
                 "index": order_index,
-                "mask": order_mask
+                "mask": order_mask,
             }
 
             return new_ex
