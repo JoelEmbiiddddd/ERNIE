@@ -42,20 +42,18 @@ from paddleformers.trainer import AutoTrainingArguments
 
 from paddleformers.trainer.utils import add_start_docstrings
 from paddleformers.trainer.trainer_callback import PrinterCallback
+from paddleformers.trainer.trainer_utils import get_cosine_schedule_with_warmup
 from paddle.distributed import fleet
 from paddle.distributed.auto_parallel.pipelining.schedules import get_pipeline_schedule
 from typing import Any, Dict, Union
 import paddle.distributed as dist
-
-
-from src.lr_schedulers import get_cosine_schedule_with_warmup
-from src.utils_auto.training_utils import reset_per_device_batch_size
-from src.callbacks_auto import (
-    TensorBoardCallback,
+from .callbacks_auto import TensorBoardCallback
+from ernie.utils.training_utils import reset_per_device_batch_size
+from ernie.callbacks import (
     LoggingCallback,
     StopperCallback,
 )
-from src.datasets.dist_data_loader import DistDataLoaderAuto
+from datasets import DistDataLoaderAuto
 
 
 logger = logging.getLogger(__name__)
@@ -182,9 +180,9 @@ class AutoPreTrainingArguments(AutoTrainingArguments):
         default="ernie",
         metadata={"help": "Only support for ernie pre-training for now."},
     )
-    n_microbatches: int = field(
-        default=1,
-        metadata={"help": "Control the num of microbatches in one pp step."},
+    moe_use_aux_free_update_coef: float = field(
+        default=1.0e-3,
+        metadata={"help": "moe aux free update coef"},
     )
 
     @property
