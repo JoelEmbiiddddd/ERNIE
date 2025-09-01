@@ -264,7 +264,9 @@ class ExampleSet:
 
             for q_r in history:
                 mask_flag = True
-                assert len(q_r) == 2, f"query and response must be a pair, but got {q_r}"
+                assert (
+                    len(q_r) == 2
+                ), f"query and response must be a pair, but got {q_r}"
                 for text in q_r:
                     parts = re.split(r"(<image>|<video>)", text)
                     for part in parts:
