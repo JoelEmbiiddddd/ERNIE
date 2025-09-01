@@ -5,6 +5,8 @@
 
 ## News
 
+**[2025-09] 🔥 Released ERNIEKit v1.1:** Support SFT/LORA with ERNIE-VL models
+
 **[2025-06] 🔥 Released ERNIEKit v1.0:** We're excited to announce ERNIEKit v1.0, the most powerful and efficient toolkit yet for developing with the latest ERNIE models!
 
 ## 1. Features
