@@ -28,21 +28,24 @@ from paddleformers.data.causal_dataset import (
     check_data_split,
 )
 from paddle.distributed.fleet.meta_parallel.pipeline_parallel import PipelineParallel
-from paddleformers.trainer import PdArgumentParser, get_last_checkpoint
+from paddleformers.trainer.trainer_utils import get_last_checkpoint
 
-from config import get_config
-from models.ernie import ErnieForCausalLMAuto
-from models.ernie.configuration_auto import (
+from data_processor.utils.argparser import PdArgumentParser, get_config
+from models import ErnieForCausalLMAuto
+from models.configuration_auto import (
     ErnieConfig,
     ErnieMoEConfig,
 )
+from trainers import (
+    AutoPretrainingTrainer,
+    AutoPreTrainingArguments,
+    MoECorrectionBiasAdjustCallback,
+)
 
-from src.callbacks import GlobalRNGCallback
-from src.tokenizers.tokenization_eb_v2 import ErnieBotTokenizer
-from src.trainers import AutoPretrainingTrainer, AutoPreTrainingArguments
-from src.utils_auto import setup_logger_output_file, logger
-from src.utils_auto.misc import global_training_logs
+from utils_auto import setup_logger_output_file, logger
+from utils_auto.misc import global_training_logs
 
+from tokenization import ErnieTokenizer
 
 from paddle.distributed.fleet import collective_perf
 from paddle import Tensor
@@ -423,7 +426,7 @@ def set_dtype(args):
 
 
 def setup_tokenizer(args, config):
-    tokenizer = ErnieBotTokenizer.from_pretrained(args.tokenizer_name)
+    tokenizer = ErnieTokenizer.from_pretrained(args.tokenizer_name)
     tokenizer.ignored_index = config.ignored_index
     logger.info(
         f"Using tokenizer={type(tokenizer)}, bos:{tokenizer.bos_token_id} "
@@ -451,20 +454,6 @@ def get_checkpoint(args, output_dir):
     return args.resume_from_checkpoint or last_checkpoint
 
 
-def setup_pipeline_config(args):
-    if "enable_dp_comm_overlap" in args.pipeline_parallel_config:
-        logger.warning(
-            "Pipeline dp_comm_overlap and FusedLinearWithGradAdd cannot be used together."
-        )
-    if "enable_timer" in args.pipeline_parallel_config:
-        PipelineParallel.timer_printer = lambda _: None
-    if args.strategy.pipeline.enable and args.virtual_pp_degree > 1:
-        pipeline = args.strategy.pipeline
-        pipeline.vpp_degree = args.virtual_pp_degree
-        pipeline.vpp_seg_method = args.virtual_pipeline_seg_method
-    return args
-
-
 def main():
     # 1. init config and parse arg
     config = get_config(verbose=True)
@@ -480,7 +469,6 @@ def main():
     (args,) = parser.parse_dict(dict(**model_args, **trainer_args))
 
     # 2. check and update
-    # setup_pipeline_config(config.trainer_args)
     if "enable_dp_comm_overlap" in config.trainer_args.pipeline_parallel_config:
         logger.warning(
             "Pipeline dp_comm_overlap and FusedLinearWithGradAdd cannot be used together."
@@ -507,7 +495,7 @@ def main():
     setup_logger_output_file(config.model_args.output_dir, args.local_rank)
     setup_device_and_seed(args)
     check_memory_preallocation(args)
-    run_fleet_tests()  # liyamei not need？
+    run_fleet_tests()
     set_dtype(args)
 
     # 4. init model
@@ -538,7 +526,14 @@ def main():
     )
 
     # 6. prepare for train/eval
-    callbacks = [GlobalRNGCallback()]
+    callbacks = []
+    if getattr(cfg, "moe_use_aux_free", False):
+        logger.info("Adding aux free callback")
+        callbacks += [
+            MoECorrectionBiasAdjustCallback(
+                args.moe_use_aux_free_update_coef, args.sequence_parallel
+            )
+        ]
     init_parameters(model)
 
     trainer = AutoPretrainingTrainer(

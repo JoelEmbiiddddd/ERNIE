@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .moe_clip import ClipGradForMOEByGlobalNorm
 
-__all__ = ["ClipGradForMOEByGlobalNorm"]
+from .modeling_auto import *  # noqa
+from .top2_gate_auto import *  # noqa
