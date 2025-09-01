@@ -33,7 +33,7 @@ def build(manager):
     """
     Basic component
     Args:
-        manager (object): An object for unified management of components
+        manager (object): An object for unified management of components.
     """
 
     default_basic_language = config.get_default_user_dict("basic", "language")
