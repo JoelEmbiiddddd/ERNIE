@@ -20,7 +20,6 @@ import copy
 import logging
 import os
 import random
-import re
 from collections import defaultdict, namedtuple
 
 import numpy as np
