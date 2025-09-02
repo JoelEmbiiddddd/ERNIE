@@ -30,6 +30,7 @@ from paddle import Tensor
 from paddle.incubate.nn.functional import moe_combine, moe_gate_dispatch
 
 from paddleformers.trainer.plugins.timer import get_timers
+from paddleformers.transformers.moe_layer_auto import dispatching, combining
 from models.top2_gate_auto import TopKGateFused, TopKGateFusedAuto
 from utils_auto.training_utils import get_flatten_mesh, get_mesh, _reshard
 
@@ -95,120 +96,6 @@ def profile(name):
         get_timers()(name).stop()
 
 
-def dispatching(x, dispatch_mask, scatter_index, num_experts, capacity):
-    output = None
-    orig_dtype = x.dtype
-    scatter_index = scatter_index.unbind(1)
-    dispatch_mask = dispatch_mask.unbind(1)
-    for i_scatter_index, i_dispatch_mask in zip(scatter_index, dispatch_mask):
-        init_output = paddle.zeros(
-            [num_experts * capacity, x.shape[-1]], dtype="float32"
-        )
-        updates = x * i_dispatch_mask.unsqueeze(-1).cast(x.dtype)
-
-        cur_out = paddle.scatter(
-            init_output,
-            i_scatter_index,
-            updates,
-            overwrite=False,
-        )
-        output = cur_out if output is None else cur_out + output
-        output = output.cast(orig_dtype) if output.dtype != orig_dtype else output
-    return output
-
-
-def combining(x, combine_weights, scatter_index):
-    dim = x.shape[-1]
-    scatter_index = scatter_index.reshape([-1])
-    num_k = combine_weights.shape[-1]
-    combine_weights = combine_weights.unsqueeze(1)
-    x = paddle.gather(x, scatter_index).reshape([-1, num_k, dim])
-    return paddle.matmul(combine_weights, x).squeeze(1)
-
-
-class MOELayer(nn.Layer):
-    def __init__(
-        self,
-        gate: nn.Layer,
-        experts: List[nn.Layer],
-        layer_idx: int,
-        shared_experts: Optional[List[nn.Layer]] = None,
-        group: Group = None,
-        recompute: bool = False,
-        k: int = 2,
-        all_to_all_dropout: float = 0,
-        group_experts: bool = False,
-        moe_statics=None,
-    ):
-
-        self.use_correction_bias = moe_statics is not None
-        self.moe_statics = moe_statics
-        if self.use_correction_bias:
-            logger.info(
-                f"using correction bias, aux-coef:{self.gate.config.moe_aux_loss_lambda}"
-            )
-            assert self.gate.config.moe_use_aux_free
-
-        self.is_mp_moe = (
-            hasattr(fleet.fleet, "_hcg")
-            and group is fleet.get_hybrid_communicate_group().get_model_parallel_group()
-        )
-        self.is_ep_moe = (
-            hasattr(fleet.fleet, "_hcg")
-            and hasattr(
-                fleet.get_hybrid_communicate_group(),
-                "get_moe_sharding_parallel_world_size",
-            )
-            and fleet.get_hybrid_communicate_group().get_moe_sharding_parallel_world_size()
-            > 0
-        )
-        is_dummy_moe = dist.get_world_size(group) == 1
-
-        for p in experts.parameters():
-            p.expert = not (self.is_mp_moe or is_dummy_moe)
-            p.no_sync = not (self.is_mp_moe or is_dummy_moe)
-            logger.info(f"expert no-sync={p.no_sync}-{p.name}")
-            if self.is_mp_moe or self.is_ep_moe:
-                p.is_distributed = True
-
-        expert_color = None
-        if self.is_ep_moe:
-            moe_grad_group = (
-                fleet.get_hybrid_communicate_group().get_moe_sharding_parallel_group()
-            )
-            expert_color = {"color": "moe_expert", "group": moe_grad_group}
-        elif (
-            self.config.offline_quant_expert_weight
-            and self.config.clear_origin_weight_when_offline_quant
-        ):
-            expert_color = {"color": "moe_expert"}
-
-        if expert_color is not None:
-            for p in self.experts.parameters():
-                setattr(p, "color", expert_color)
-
-        self.world_size = dist.get_world_size(self.group)
-        self.rank = dist.get_rank(self.group)
-        if self.world_size < 1:
-            self.world_size = 1
-        if self.rank < 0:
-            self.rank = 0
-
-        self.num_local_experts = len(self.experts)
-        self.dispatch_by_task = (
-            hasattr(self.gate, "dispatch_by_task") and self.gate.dispatch_by_task
-        )
-
-        if self.dispatch_by_task:
-            assert 0, "no supported, checkout earylier code"
-            assert self.num_local_experts == 1
-
-        self.input_preprocess = self.output_postprocess = None
-        self.group_experts = group_experts
-        self.config = self.gate.config
-        self.zero = paddle.to_tensor(0, dtype=paddle.float32)
-
-
 def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
     """
     Args:
@@ -228,8 +115,7 @@ def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
     return ret
 
 
-class MOELayerAuto(MOELayer):
-
+class MOELayerAuto(nn.Layer):
     def __init__(
         self,
         gate: nn.Layer,
@@ -245,7 +131,7 @@ class MOELayerAuto(MOELayer):
         config=None,
         ipp=0,
     ):
-        nn.Layer.__init__(self)
+        super().__init__(self)
         self.config = config
         self.gate = gate
         self.layer_idx = layer_idx
@@ -638,8 +524,8 @@ class MOELayerAuto(MOELayer):
             else:
                 dispatched_input = dispatching(
                     input,
-                    dispatch_mask,
-                    scatter_index,
+                    dispatch_mask.unbind(1),
+                    scatter_index.unbind(1),
                     num_experts=self.config.moe_num_experts,
                     capacity=capacity,
                 )
@@ -689,6 +575,10 @@ class MOELayerAuto(MOELayer):
                     )
             use_fuse = isinstance(self.gate, (TopKGateFusedAuto))
             combine_fn = combining_fused_auto if use_fuse else combining
+            combine_weights = (
+                combine_weights if use_fuse else combine_weights.unsqueeze(1)
+            )
+
             combined_output = combine_fn(expert_output, combine_weights, scatter_index)
 
             if self.output_postprocess is not None:

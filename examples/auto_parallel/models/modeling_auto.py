@@ -21,7 +21,6 @@ import contextlib
 
 from copy import deepcopy
 from dataclasses import dataclass
-import numpy as np
 import paddle
 import paddle.distributed as dist
 import paddle.nn.functional as F
@@ -29,7 +28,6 @@ from paddle.distributed import fleet
 from paddle import nn
 from paddle.distributed.fleet.utils import recompute
 from paddle.distributed.fleet.layers.mpu.random import get_rng_state_tracker
-from paddle.distributed import in_auto_parallel_align_mode
 
 from models.top2_gate_auto import TopKGateFusedAuto
 
@@ -39,7 +37,7 @@ from paddleformers.transformers.model_outputs import (
 )
 from paddleformers.transformers.model_outputs import CausalLMOutputWithCrossAttentions
 
-from paddleformers.transformers.model_utils import PretrainedModel, register_base_model
+from paddleformers.transformers.model_utils import PretrainedModel
 
 from models.moe_layer_auto import (
     MOELayerAuto,
@@ -51,7 +49,7 @@ from utils_auto.training_utils import get_mesh
 
 from paddle.nn.functional.flash_attention import flash_attention
 from paddle.incubate.nn.functional import fused_rotary_position_embedding as fused_rope
-from paddle.incubate.nn.functional import swiglu as fused_swiglu
+from paddle.incubate.nn.functional import swiglu
 
 
 @dataclass
@@ -87,18 +85,6 @@ class FusedDropoutImpl(nn.Layer):
         output = x + y
 
         return output
-
-
-def get_triangle_upper_mask(x, mask=None):
-    if mask is not None:
-        return mask
-    shape = x.shape
-    shape[1] = 1
-    mask = paddle.full(shape, -np.inf, dtype=x.dtype)
-    mask.stop_gradient = True
-    mask = paddle.triu(mask, diagonal=1)
-    mask.stop_gradient = True
-    return mask
 
 
 def calc_lm_head_logits(
@@ -203,7 +189,7 @@ def scaled_dot_product_attention(
             )
 
         if attention_mask is None:
-            attention_mask = get_triangle_upper_mask(attn_weights)
+            attention_mask = F.get_triangle_upper_mask(attn_weights)
 
         attention_mask = attention_mask.reshape([bsz, 1, q_len, kv_seq_len])
         if attention_mask.shape != [bsz, 1, q_len, kv_seq_len]:
@@ -220,15 +206,11 @@ def scaled_dot_product_attention(
                 ),
             )
 
-            if paddle.in_dynamic_mode():
-                with paddle.amp.auto_cast(False):
-                    attn_weights = F.softmax(
-                        attn_weights, axis=-1, dtype="float32"
-                    ).astype(query_states.dtype)
-            else:
+            with paddle.amp.auto_cast(False):
                 attn_weights = F.softmax(attn_weights, axis=-1, dtype="float32").astype(
                     query_states.dtype
                 )
+
         else:
             attn_weights = attn_weights.cast(paddle.float32)
             attention_mask = attention_mask.cast(paddle.float32)
@@ -384,13 +366,7 @@ class RMSNorm(nn.Layer):
             return paddle.incubate.nn.functional.fused_rms_norm_ext(
                 hidden_states, self.weight, self.variance_epsilon
             )[0]
-        if paddle.in_dynamic_mode():
-            with paddle.amp.auto_cast(False):
-                variance = hidden_states.astype("float32").pow(2).mean(-1, keepdim=True)
-                hidden_states = (
-                    paddle.rsqrt(variance + self.variance_epsilon) * hidden_states
-                )
-        else:
+        with paddle.amp.auto_cast(False):
             variance = hidden_states.astype("float32").pow(2).mean(-1, keepdim=True)
             hidden_states = (
                 paddle.rsqrt(variance + self.variance_epsilon) * hidden_states
@@ -605,12 +581,10 @@ class ErnieMLP(nn.Layer):
                 )
 
         self.fuse_swiglu = config.fuse_swiglu
-        if self.fuse_swiglu:
-            assert fused_swiglu is not None, "fused_swiglu operator is not found."
 
     def forward(self, x):
         if self.fuse_swiglu:
-            x = fused_swiglu(self.gate_proj(x), self.up_proj(x))
+            x = swiglu(self.gate_proj(x), self.up_proj(x))
         else:
             x = F.silu(self.gate_proj(x)) * self.up_proj(x)
 
@@ -633,8 +607,6 @@ class ErnieAttentionAuto(nn.Layer):
             config.num_key_value_heads is not None
             and config.num_key_value_heads != self.num_heads
         )
-        if config.fuse_rope:
-            assert fused_rope is not None, "fused_rope is not supported"
         self.fuse_rope = config.fuse_rope
 
         if self.is_gqa:
@@ -683,46 +655,42 @@ class ErnieAttentionAuto(nn.Layer):
 
         self.config = config
 
-        if (
-            self.config.tensor_parallel_degree > 1
-            or self.config.pipeline_parallel_degree > 1
-        ):
-            self.q_proj.weight = dist.shard_tensor(
-                self.q_proj.weight,
-                get_mesh(self.ipp),
-                [dist.Replicate(), dist.Shard(1)],
-            )
-            self.k_proj.weight = dist.shard_tensor(
-                self.k_proj.weight,
-                get_mesh(self.ipp),
-                [dist.Replicate(), dist.Shard(1)],
-            )
-            self.v_proj.weight = dist.shard_tensor(
-                self.v_proj.weight,
-                get_mesh(self.ipp),
-                [dist.Replicate(), dist.Shard(1)],
-            )
-            if config.use_bias:
-                self.q_proj.bias = dist.shard_tensor(
-                    self.q_proj.bias,
-                    get_mesh(self.ipp),
-                    [dist.Replicate(), dist.Shard(0)],
-                )
-                self.k_proj.bias = dist.shard_tensor(
-                    self.k_proj.bias,
-                    get_mesh(self.ipp),
-                    [dist.Replicate(), dist.Shard(0)],
-                )
-                self.v_proj.bias = dist.shard_tensor(
-                    self.v_proj.bias,
-                    get_mesh(self.ipp),
-                    [dist.Replicate(), dist.Shard(0)],
-                )
-            self.o_proj.weight = dist.shard_tensor(
-                self.o_proj.weight,
+        self.q_proj.weight = dist.shard_tensor(
+            self.q_proj.weight,
+            get_mesh(self.ipp),
+            [dist.Replicate(), dist.Shard(1)],
+        )
+        self.k_proj.weight = dist.shard_tensor(
+            self.k_proj.weight,
+            get_mesh(self.ipp),
+            [dist.Replicate(), dist.Shard(1)],
+        )
+        self.v_proj.weight = dist.shard_tensor(
+            self.v_proj.weight,
+            get_mesh(self.ipp),
+            [dist.Replicate(), dist.Shard(1)],
+        )
+        if config.use_bias:
+            self.q_proj.bias = dist.shard_tensor(
+                self.q_proj.bias,
                 get_mesh(self.ipp),
                 [dist.Replicate(), dist.Shard(0)],
             )
+            self.k_proj.bias = dist.shard_tensor(
+                self.k_proj.bias,
+                get_mesh(self.ipp),
+                [dist.Replicate(), dist.Shard(0)],
+            )
+            self.v_proj.bias = dist.shard_tensor(
+                self.v_proj.bias,
+                get_mesh(self.ipp),
+                [dist.Replicate(), dist.Shard(0)],
+            )
+        self.o_proj.weight = dist.shard_tensor(
+            self.o_proj.weight,
+            get_mesh(self.ipp),
+            [dist.Replicate(), dist.Shard(0)],
+        )
 
     def forward(
         self,
@@ -907,8 +875,6 @@ class ErnieMoeMLP(ErnieMLP):
         super().__init__(config, ipp, do_shard_tensor=not disable_ffn_model_parallel)
         self.moe_dropout_prob = config.moe_dropout_prob
         self.fuse_swiglu = config.fuse_swiglu
-        if self.fuse_swiglu:
-            assert fused_swiglu is not None, "fused_swiglu operator is not found."
 
     def redistribute_expert(self, mesh, placements):
         """
@@ -932,7 +898,7 @@ class ErnieMoeMLP(ErnieMLP):
 
     def forward(self, x):
         if self.fuse_swiglu:
-            x = fused_swiglu(self.gate_proj(x), self.up_proj(x))
+            x = swiglu(self.gate_proj(x), self.up_proj(x))
         else:
             x = F.silu(self.gate_proj(x)) * self.up_proj(x)
         if self.moe_dropout_prob > 0:
@@ -983,8 +949,6 @@ class ErnieMoeMLPFused(nn.Layer):
             self.num_local_experts, config.intermediate_size, config.hidden_size
         )
         self.fuse_swiglu = config.fuse_swiglu
-        if self.fuse_swiglu:
-            assert fused_swiglu is not None, "fused_swiglu operator is not found."
 
     def __len__(self):
         return self.num_local_experts
@@ -994,7 +958,7 @@ class ErnieMoeMLPFused(nn.Layer):
 
     def forward(self, x):
         if self.fuse_swiglu:
-            x = fused_swiglu(self.up_gate_proj(x))
+            x = swiglu(self.up_gate_proj(x))
         else:
             gate, x = self.up_gate_proj(x).chunk(2, axis=-1)
             x = F.silu(gate) * x
@@ -1338,7 +1302,6 @@ class ErniePretrainedModelAuto(PretrainedModel):
                 )
 
 
-@register_base_model
 class ErnieModelAuto(ErniePretrainedModelAuto):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`ErnieDecoderLayerAuto`]
@@ -1357,16 +1320,11 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 self.vocab_size,
                 self.hidden_size,
             )
-            if (
-                self.config.tensor_parallel_degree > 1
-                or self.config.pipeline_parallel_degree > 1
-            ):
-                if not in_auto_parallel_align_mode():
-                    self.embed_tokens.weight = dist.shard_tensor(
-                        self.embed_tokens.weight,
-                        get_mesh(pp_idx=0),
-                        [dist.Replicate(), dist.Shard(1)],
-                    )
+            self.embed_tokens.weight = dist.shard_tensor(
+                self.embed_tokens.weight,
+                get_mesh(pp_idx=0),
+                [dist.Replicate(), dist.Shard(1)],
+            )
         if config.pipeline_parallel_degree <= 1:
             self.layers = nn.LayerList()
             for idx in range(
@@ -1529,9 +1487,7 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                 [dist.Replicate() for _ in range(len(global_mesh._shape))],
             )
 
-        hidden_states = inputs_embeds
-        if self.config.tensor_parallel_degree > 1:
-            hidden_states = dist.reshard(hidden_states, get_mesh(0), self.placements)
+        hidden_states = dist.reshard(inputs_embeds, get_mesh(0), self.placements)
 
         return hidden_states, attention_mask, position_ids
 
@@ -1704,7 +1660,7 @@ class ErniePretrainingCriterion(paddle.nn.Layer):
             loss, loss_sum = res
         else:
             loss, loss_sum = res, None
-        if router_loss is not None and not in_auto_parallel_align_mode():
+        if router_loss is not None:
             loss = loss + router_loss - router_loss.detach()
         if not self.return_tuple:
             return loss
