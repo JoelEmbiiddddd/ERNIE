@@ -36,7 +36,11 @@ from models.configuration_auto import (
     ErnieConfig,
     ErnieMoEConfig,
 )
-from trainers import AutoPretrainingTrainer, AutoPreTrainingArguments
+from trainers import (
+    AutoPretrainingTrainer,
+    AutoPreTrainingArguments,
+    MoECorrectionBiasAdjustCallback,
+)
 
 from utils_auto import setup_logger_output_file, logger
 from utils_auto.misc import global_training_logs
@@ -450,6 +454,23 @@ def get_checkpoint(args, output_dir):
     return args.resume_from_checkpoint or last_checkpoint
 
 
+def set_moe_config(config):
+    if hasattr(config, "use_moe") and config.use_moe:
+        if config.moe_group in {"mp", "model", "tp", "mpdp"}:
+            assert config.sequence_parallel
+            logger.info(
+                f"disable FFN tensor model parallel, moe-group={config.moe_group}"
+            )
+            config.disable_ffn_model_parallel = True
+
+        config.moe_world_size = 1
+        if config.moe_group in fleet.auto.get_mesh().dim_names:
+            config.moe_world_size = max(
+                config.moe_world_size,
+                fleet.auto.get_mesh().get_dim_size(config.moe_group),
+            )
+
+
 def main():
     # 1. init config and parse arg
     config = get_config(verbose=True)
@@ -507,6 +528,8 @@ def main():
     ):
         replace_cross_entropy()
 
+    set_moe_config(cfg)
+
     tokenizer = setup_tokenizer(args, cfg)
 
     with paddle.LazyGuard():
@@ -522,6 +545,14 @@ def main():
     )
 
     # 6. prepare for train/eval
+    callbacks = []
+    if getattr(cfg, "moe_use_aux_free", False):
+        logger.info("Adding aux free callback")
+        callbacks += [
+            MoECorrectionBiasAdjustCallback(
+                args.moe_use_aux_free_update_coef, args.sequence_parallel
+            )
+        ]
     init_parameters(model)
 
     trainer = AutoPretrainingTrainer(
@@ -532,6 +563,7 @@ def main():
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         compute_metrics=lambda p: compute_metrics(p, tokenizer),
+        callbacks=callbacks,
     )
 
     global_training_logs.accumulate = args.gradient_accumulation_steps
