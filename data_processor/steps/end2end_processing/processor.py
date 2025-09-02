@@ -75,7 +75,8 @@ class End2EndProcessor(ProcessorBase):
         schema = self.utterance_process.process(data, **kwargs)
 
         # step2: coarse processing
-        schema = self.coarse_processor.process(schema, **kwargs)
+        if len(schema.get("video_info", [])) > 0:
+            schema = self.coarse_processor.process(schema, **kwargs)
 
         # step3:  ids massaging
         schemas = self.input_ids_massage_processor.process(schema, **kwargs)

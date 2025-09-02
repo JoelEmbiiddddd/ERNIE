@@ -170,11 +170,11 @@ class UtteranceProcessor(ProcessorBase):
                     text_info = (
                         text_info[:matched_text_index]
                         + [
-                                {
-                                    "text": f"Video {vid_id}:",
-                                    "tag": "mask",
-                                }
-                            ]
+                            {
+                                "text": f"Video {vid_id}:",
+                                "tag": "mask",
+                            }
+                        ]
                         + [
                             {
                                 "text": self.video_start_token,
@@ -210,11 +210,11 @@ class UtteranceProcessor(ProcessorBase):
                 text_info = (
                     text_info[:matched_text_index]
                     + [
-                            {
-                                "text": f"Video {vid_id}:",
-                                "tag": "mask",
-                            }
-                        ]
+                        {
+                            "text": f"Video {vid_id}:",
+                            "tag": "mask",
+                        }
+                    ]
                     + [
                         {
                             "text": self.video_start_token,
