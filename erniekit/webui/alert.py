@@ -49,20 +49,20 @@ ALERTS = {
     },
     "export_split_start": {
         "info": {
-            "zh": "开始执行erniekit sever， 请稍候",
-            "en": "start run erniekit sever export",
+            "zh": "开始执行erniekit server， 请稍候",
+            "en": "start run erniekit server export",
         }
     },
     "export_split_non_existent": {
         "error": {
-            "zh": "执行erniekit sever失败, 输入文件夹本地不存在，请检查文件配置",
-            "en": "run erniekit sever failed，input folder does not exist,please check file config",
+            "zh": "执行erniekit server失败, 输入文件夹本地不存在，请检查文件配置",
+            "en": "run erniekit server failed，input folder does not exist,please check file config",
         }
     },
     "export_split_success": {
         "info": {
-            "zh": "erniekit sever执行完成",
-            "en": "erniekit sever export completed",
+            "zh": "erniekit server执行完成",
+            "en": "erniekit server export completed",
         }
     },
     "export_split_find_exceed_file": {
@@ -73,7 +73,10 @@ ALERTS = {
         }
     },
     "export_split_fail": {
-        "error": {"zh": "erniekit sever执行失败", "en": "erniekit sever export failed"}
+        "error": {
+            "zh": "erniekit server执行失败",
+            "en": "erniekit server export failed",
+        }
     },
     "preview_data_non_json": {
         "error": {
@@ -177,8 +180,8 @@ ALERTS = {
     },
     "merge_is_running": {
         "warning": {
-            "zh": "当前merge任务正在进行中，请等待完成或停止后再执行",
-            "en": "Current merge task is being performed, wait until it completes or stop it first",
+            "zh": "当前有合并任务正在执行中，请先等待其完成，或手动停止后再进行操作",
+            "en": "A merge task is currently running. Please either wait for it to finish or stop it manually before proceeding.",
         }
     },
     "split_is_running": {
