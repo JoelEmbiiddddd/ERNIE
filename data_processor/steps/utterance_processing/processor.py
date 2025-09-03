@@ -113,7 +113,7 @@ class UtteranceProcessor(ProcessorBase):
         """
         schema_correction
         """
-        if schema.get("video_info"):
+        if len(schema.get("video_info", [])) > 0:
             video_info = schema["video_info"]
             text_info = schema["text_info"]
             matched_text_index_offset = 0
