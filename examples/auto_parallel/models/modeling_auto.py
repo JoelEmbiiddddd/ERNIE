@@ -1494,7 +1494,6 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
             ]  # [B, S, D]
             inputs_embeds = inputs_embeds[:, : -self.config.multi_token_pred_depth, :]
             inputs_embeds_ori = inputs_embeds
-            # 构建输入向量
             inputs_embeds_cur_depth_list = []
             for depth in range(self.config.multi_token_pred_depth):
                 inputs_embeds_cur_depth = paddle.concat(
@@ -1629,13 +1628,8 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                     get_mesh(-1),
                     [dist.Replicate(), dist.Replicate()],
                 )
-                # hidden_states = hidden_states.reshape([-1, hidden_states.shape[0], hidden_states.shape[-1]])
                 hidden_states = paddle.transpose(hidden_states, [1, 0, 2])
 
-            # # 构建输入向量
-            # inputs_embeds_cur_depth = paddle.concat(
-            #     [self.inputs_embeds_ori[:, (depth + 1) :, :], self.inputs_embeds_extra[:, : (depth + 1), :]], axis=1
-            # )
             inputs_embeds_cur_depth = inputs_embeds_cur_depth_list[depth]
 
             # Norm&Concat
@@ -1660,7 +1654,6 @@ class ErnieModelAuto(ErniePretrainedModelAuto):
                     self.placements,
                 )
 
-            # 通过该层的decoder_layer进行预测
             decoder_layer = self.mtp_block[depth]
             past_key_values = None
             layer_outputs = decoder_layer(
