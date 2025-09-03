@@ -272,6 +272,7 @@ def test_sft_fd_server():
     process_chat = run_update_config_training(config, steps="chat")
     run_check_fastdeploy_infer(process_server, process_chat)
 
+
 def test_sft_lora():
     clean_output_dir()
     yaml_path = os.path.join(SFT_CONFIG_PATH, "run_sft_lora_8k.yaml")
