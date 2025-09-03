@@ -42,7 +42,6 @@ from paddleformers.trainer import AutoTrainingArguments
 
 from paddleformers.trainer.utils import add_start_docstrings
 from paddleformers.trainer.trainer_callback import PrinterCallback
-from paddleformers.trainer.trainer_utils import get_cosine_schedule_with_warmup
 from paddle.distributed import fleet
 from paddle.distributed.auto_parallel.pipelining.schedules import get_pipeline_schedule
 from typing import Any, Dict, Union
@@ -52,6 +51,10 @@ from ernie.utils.training_utils import reset_per_device_batch_size
 from ernie.callbacks import (
     LoggingCallback,
     StopperCallback,
+)
+from ernie.lr_schedulers import (
+    get_cosine_schedule_with_warmup,
+    get_wsd_schedule_with_warmup,
 )
 from datasets import DistDataLoaderAuto
 
@@ -148,6 +151,20 @@ class AutoPreTrainingArguments(AutoTrainingArguments):
     multi_token_pred_depth: Optional[int] = field(
         default=0,
         metadata={},
+    )
+
+    lr_scheduler: str = field(
+        default="cosine",
+        metadata={
+            "help": "The scheduler type to use. support linear, cosine, constant, constant_with_warmup"
+        },
+    )
+
+    decay_function: str = field(
+        default="half_life",
+        metadata={
+            "help": "The decay function for WSD LR scheduler. support half_life(default), 1-sqrt"
+        },
     )
 
     moe_gate_lr_ratio: float = field(
@@ -461,12 +478,28 @@ class AutoPretrainingTrainer(AutoTrainer):
             warmup = self.args.warmup_steps
         else:
             warmup = int(self.args.warmup_ratio * num_training_steps)
-        self.lr_scheduler = get_cosine_schedule_with_warmup(
-            self.args.learning_rate,
-            warmup,
-            self.args.max_steps,
-            min_lr=self.args.min_lr if self.args.min_lr else 0.0,
-        )
+        if self.args.lr_scheduler.startswith("wsd"):
+            scheduler = self.args.lr_scheduler.split(":")
+            if len(scheduler) == 2:
+                num_steady_steps = int(scheduler[1])
+            else:
+                num_steady_steps = None
+            logger.info(f"using wsd lr scheduler, num_steady_steps={num_steady_steps}")
+            self.lr_scheduler = get_wsd_schedule_with_warmup(
+                self.args.learning_rate,
+                warmup,
+                self.args.max_steps,
+                decay_function=self.args.decay_function,
+                min_lr=self.args.min_lr if self.args.min_lr else 0.0,
+                num_steady_steps=num_steady_steps,
+            )
+        else:
+            self.lr_scheduler = get_cosine_schedule_with_warmup(
+                self.args.learning_rate,
+                warmup,
+                self.args.max_steps,
+                min_lr=self.args.min_lr if self.args.min_lr else 0.0,
+            )
 
         return self.lr_scheduler
 
