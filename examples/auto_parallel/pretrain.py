@@ -32,7 +32,7 @@ from paddle.distributed.fleet.meta_parallel.pipeline_parallel import PipelinePar
 from paddleformers.trainer.trainer_utils import get_last_checkpoint
 
 from data_processor.utils.argparser import PdArgumentParser, get_config
-from models import ErnieForCausalLM
+
 from models.configuration import (
     ErnieConfig,
     ErnieMoEConfig,
@@ -55,6 +55,20 @@ from paddle.distributed.fleet.base import topology as tp
 from paddle.distributed import collective
 from paddle.tensor.manipulation import reshape
 from typing import Literal, TypeAlias
+
+# USE_VPP=0: Implement parallelism using the intermediate API.
+# USE_VPP=1: Implement parallelism using the basic API; the intermediate API does not support VPP for the time being.
+use_vpp = os.environ.get("USE_VPP", "0")
+if use_vpp == "0":
+    from models.modeling import ErnieForCausalLM
+
+    logger.info("Training with the intermediate API. Do not support VPP.")
+elif use_vpp == "1":
+    from models.modeling_vpp import ErnieForCausalLM
+
+    logger.info("Training VPP parallelism with the basic API")
+else:
+    raise ValueError(f"Invalid environment args USE_VPP={use_vpp}")
 
 _ReduceMode: TypeAlias = Literal["mean", "sum", "none"]
 
