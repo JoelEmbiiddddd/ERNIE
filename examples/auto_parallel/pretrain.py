@@ -43,7 +43,7 @@ from trainers import (
     MoECorrectionBiasAdjustCallback,
 )
 
-from utils import setup_logger_output_file, logger
+from utils import setup_logger_output_file, logger, mock_offload_optimizer
 from utils.misc import global_training_logs
 
 from tokenization import ErnieTokenizer
@@ -523,6 +523,8 @@ def main():
     }
     logger.info(f"Model config from YAML: {json.dumps(model_config, indent=4)}")
     cfg = setup_model_config(args, model_config)
+    if args.offload_optimizer:
+        mock_offload_optimizer()
     if (
         "replace_with_parallel_cross_entropy" in args.tensor_parallel_config
         and cfg.tensor_parallel_degree > 1
