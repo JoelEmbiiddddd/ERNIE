@@ -117,7 +117,6 @@ class ErnieConfig(PretrainedConfig):
         use_flash_attn=True,
         use_flash_attn_with_mask=False,
         use_recompute=False,
-        use_recompute_attn=False,
         recompute_use_reentrant=False,
         use_rmsnorm=True,
         fuse_rms_norm=False,
@@ -182,6 +181,7 @@ class ErnieConfig(PretrainedConfig):
         use_combine_before_a2a=False,
         use_quant_before_a2a=False,
         rope_yarn_config={},
+        moe_use_all2all=True,
         **kwargs,
     ):
         if "tie_word_embeddings" not in kwargs:
@@ -201,10 +201,6 @@ class ErnieConfig(PretrainedConfig):
         self.head_dim = head_dim
         self.rms_norm_eps = rms_norm_eps
         self.use_cache = use_cache
-        self.use_recompute_attn = use_recompute_attn
-        if use_recompute_attn:
-            logger.warning("set `use_recompute_attn`=True, disabling `use_recompute`")
-            use_recompute = False
         self.use_recompute = use_recompute
         self.recompute_num_layers = (
             recompute_num_layers
@@ -267,6 +263,7 @@ class ErnieConfig(PretrainedConfig):
         self.decoderlayer_act_offload_settings = decoderlayer_act_offload_settings
         self.loss_subbatch_seqlen = loss_subbatch_seqlen
         self.gate_force_zero_padding_grad = gate_force_zero_padding_grad
+        self.moe_use_all2all = moe_use_all2all
 
         default_fp8_configs = {
             "quant_scheme": "DelayedScaling",
@@ -337,7 +334,6 @@ class ErnieConfig(PretrainedConfig):
         self.register_nonsaveable_keys("use_recompute")
         self.register_nonsaveable_keys("recompute_use_reentrant")
         self.register_nonsaveable_keys("refined_recompute")
-        self.register_nonsaveable_keys("use_recompute_attn")
         self.register_nonsaveable_keys("use_recompute_lm_head")
         self.register_nonsaveable_keys("use_recompute_mtp")
         self.register_nonsaveable_keys("use_recompute_dnd")
@@ -428,8 +424,6 @@ class ErnieMoEConfig(ErnieConfig):
         moe_layer_end_index: Union[int, list] = -1,
         moe_aux_loss_lambda=1e-2,
         moe_orthogonal_loss_lambda=1e-2,
-        sinkhorn_2gate=True,
-        sinkhorn_temp=3e-2,
         global_aux_loss=False,
         moe_dropout_prob=0.0,
         moe_group="world",
@@ -506,8 +500,6 @@ class ErnieMoEConfig(ErnieConfig):
         self.moe_aux_loss_lambda = moe_aux_loss_lambda
         self.moe_orthogonal_loss_lambda = moe_orthogonal_loss_lambda
         self.global_aux_loss = global_aux_loss
-        self.sinkhorn_2gate = sinkhorn_2gate
-        self.sinkhorn_temp = sinkhorn_temp
         self.moe_layer_interval = moe_layer_interval
         self.moe_dropout_prob = moe_dropout_prob
         self.moe_group = moe_group
@@ -659,6 +651,14 @@ class ErnieMoEConfig(ErnieConfig):
         return (
             isinstance(self.moe_num_experts, (tuple, list))
             and len(self.moe_num_experts) > 1
+        )
+
+    @property
+    def use_moe(self) -> bool:
+        return (
+            sum(self.moe_num_experts) > 0
+            if self.multimodel_experts
+            else self.moe_num_experts > 0
         )
 
     def __setattr__(self, name: str, value):

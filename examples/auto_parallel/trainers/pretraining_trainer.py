@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""AutoPretrainingTrainer"""
+"""PretrainingTrainer"""
 
 __all__ = [
-    "AutoPretrainingTrainer",
+    "PretrainingTrainer",
 ]
 
 
@@ -42,18 +42,21 @@ from paddleformers.trainer import AutoTrainingArguments
 
 from paddleformers.trainer.utils import add_start_docstrings
 from paddleformers.trainer.trainer_callback import PrinterCallback
-from paddleformers.trainer.trainer_utils import get_cosine_schedule_with_warmup
 from paddle.distributed import fleet
 from paddle.distributed.auto_parallel.pipelining.schedules import get_pipeline_schedule
 from typing import Any, Dict, Union
 import paddle.distributed as dist
-from .callbacks_auto import TensorBoardCallback
+from .callbacks import TensorBoardCallback
 from ernie.utils.training_utils import reset_per_device_batch_size
 from ernie.callbacks import (
     LoggingCallback,
     StopperCallback,
 )
-from datasets import DistDataLoaderAuto
+from ernie.lr_schedulers import (
+    get_cosine_schedule_with_warmup,
+    get_wsd_schedule_with_warmup,
+)
+from datasets import DistDataLoaderErnie
 
 
 logger = logging.getLogger(__name__)
@@ -61,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 @add_start_docstrings(AutoTrainingArguments.__doc__)
-class AutoPreTrainingArguments(AutoTrainingArguments):
+class PreTrainingArguments(AutoTrainingArguments):
 
     multimodal: bool = field(
         default=False, metadata={"help": "whether training with multimodal"}
@@ -150,6 +153,20 @@ class AutoPreTrainingArguments(AutoTrainingArguments):
         metadata={},
     )
 
+    lr_scheduler: str = field(
+        default="cosine",
+        metadata={
+            "help": "The scheduler type to use. support linear, cosine, constant, constant_with_warmup"
+        },
+    )
+
+    decay_function: str = field(
+        default="half_life",
+        metadata={
+            "help": "The decay function for WSD LR scheduler. support half_life(default), 1-sqrt"
+        },
+    )
+
     moe_gate_lr_ratio: float = field(
         default=None,
         metadata={
@@ -172,7 +189,7 @@ class AutoPreTrainingArguments(AutoTrainingArguments):
         metadata={"help": "The pipeline schedule mode, support 1F1B and VPP"},
     )
     virtual_pipeline_seg_method: str = field(
-        default="ErnieDecoderLayerAuto",
+        default="ErnieDecoderLayer",
         metadata={"help": "The seg method of spliting pp layer for virtual pipeline."},
     )
 
@@ -251,7 +268,7 @@ class AutoPreTrainingArguments(AutoTrainingArguments):
             logger.warn(f"eval_batch_size set to {self.per_device_eval_batch_size}")
 
 
-class AutoPretrainingTrainer(AutoTrainer):
+class PretrainingTrainer(AutoTrainer):
 
     def __init__(self, args=None, model=None, callbacks=[], **kwargs):
         callbacks = [
@@ -333,7 +350,7 @@ class AutoPretrainingTrainer(AutoTrainer):
 
         return final_loss
 
-    def dynamic_auto_parallel_pipeline_training(
+    def dynamic_pipeline_training(
         self, model: nn.Layer, inputs: Dict[str, Union[paddle.Tensor, Any]]
     ) -> paddle.Tensor:
         assert (
@@ -348,7 +365,7 @@ class AutoPretrainingTrainer(AutoTrainer):
         self, model: nn.Layer, inputs: Dict[str, Union[paddle.Tensor, Any]]
     ) -> paddle.Tensor:
         if self.args.pipeline_parallel_degree > 1:
-            return self.dynamic_auto_parallel_pipeline_training(model, inputs)
+            return self.dynamic_pipeline_training(model, inputs)
         else:
             return super().dynamic_training(model, inputs)
 
@@ -447,7 +464,7 @@ class AutoPretrainingTrainer(AutoTrainer):
             train_sampler = self._get_train_sampler()
         else:
             train_sampler = None
-        return DistDataLoaderAuto(
+        return DistDataLoaderErnie(
             train_dataset,
             batch_sampler=train_sampler,
             collate_fn=self.data_collator,
@@ -461,12 +478,28 @@ class AutoPretrainingTrainer(AutoTrainer):
             warmup = self.args.warmup_steps
         else:
             warmup = int(self.args.warmup_ratio * num_training_steps)
-        self.lr_scheduler = get_cosine_schedule_with_warmup(
-            self.args.learning_rate,
-            warmup,
-            self.args.max_steps,
-            min_lr=self.args.min_lr if self.args.min_lr else 0.0,
-        )
+        if self.args.lr_scheduler.startswith("wsd"):
+            scheduler = self.args.lr_scheduler.split(":")
+            if len(scheduler) == 2:
+                num_steady_steps = int(scheduler[1])
+            else:
+                num_steady_steps = None
+            logger.info(f"using wsd lr scheduler, num_steady_steps={num_steady_steps}")
+            self.lr_scheduler = get_wsd_schedule_with_warmup(
+                self.args.learning_rate,
+                warmup,
+                self.args.max_steps,
+                decay_function=self.args.decay_function,
+                min_lr=self.args.min_lr if self.args.min_lr else 0.0,
+                num_steady_steps=num_steady_steps,
+            )
+        else:
+            self.lr_scheduler = get_cosine_schedule_with_warmup(
+                self.args.learning_rate,
+                warmup,
+                self.args.max_steps,
+                min_lr=self.args.min_lr if self.args.min_lr else 0.0,
+            )
 
         return self.lr_scheduler
 

@@ -22,6 +22,7 @@ import numpy as np
 import paddle
 from omegaconf import ListConfig, DictConfig
 from paddle.distributed.fleet import fleet
+from paddle.distributed.auto_parallel import get_mesh
 from paddleformers.data import Stack
 from paddleformers.data.causal_dataset import (
     build_train_valid_test_datasets,
@@ -31,19 +32,19 @@ from paddle.distributed.fleet.meta_parallel.pipeline_parallel import PipelinePar
 from paddleformers.trainer.trainer_utils import get_last_checkpoint
 
 from data_processor.utils.argparser import PdArgumentParser, get_config
-from models import ErnieForCausalLMAuto
-from models.configuration_auto import (
+from models import ErnieForCausalLM
+from models.configuration import (
     ErnieConfig,
     ErnieMoEConfig,
 )
 from trainers import (
-    AutoPretrainingTrainer,
-    AutoPreTrainingArguments,
+    PretrainingTrainer,
+    PreTrainingArguments,
     MoECorrectionBiasAdjustCallback,
 )
 
-from utils_auto import setup_logger_output_file, logger
-from utils_auto.misc import global_training_logs
+from utils import setup_logger_output_file, logger
+from utils.misc import global_training_logs
 
 from tokenization import ErnieTokenizer
 
@@ -464,10 +465,10 @@ def set_moe_config(config):
             config.disable_ffn_model_parallel = True
 
         config.moe_world_size = 1
-        if config.moe_group in fleet.auto.get_mesh().dim_names:
+        if config.moe_group in get_mesh().dim_names:
             config.moe_world_size = max(
                 config.moe_world_size,
-                fleet.auto.get_mesh().get_dim_size(config.moe_group),
+                get_mesh().get_dim_size(config.moe_group),
             )
 
 
@@ -482,7 +483,7 @@ def main():
     trainer_args = {
         k: format_config_value(v) for k, v in dict(config.trainer_args).items()
     }
-    parser = PdArgumentParser(AutoPreTrainingArguments)
+    parser = PdArgumentParser(PreTrainingArguments)
     (args,) = parser.parse_dict(dict(**model_args, **trainer_args))
 
     # 2. check and update
@@ -533,7 +534,7 @@ def main():
     tokenizer = setup_tokenizer(args, cfg)
 
     with paddle.LazyGuard():
-        model = ErnieForCausalLMAuto(cfg)
+        model = ErnieForCausalLM(cfg)
 
     logger.info(f"Using model: {type(model)}, config: {model.config}")
     paddle.set_default_dtype("float32")
@@ -555,7 +556,7 @@ def main():
         ]
     init_parameters(model)
 
-    trainer = AutoPretrainingTrainer(
+    trainer = PretrainingTrainer(
         model=model,
         args=args,
         data_collator=data_collator,
