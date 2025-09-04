@@ -12,14 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .pretraining_trainer import (
-    PreTrainingArguments,
-    PretrainingTrainer,
-    WeightedDistributedSampler,
-)
 
-__all__ = [
-    "PretrainingTrainer",
-    "PreTrainingArguments",
-    "WeightedDistributedSampler",
-]
+from .modeling_auto import *  # noqa
+from .top2_gate_auto import *  # noqa

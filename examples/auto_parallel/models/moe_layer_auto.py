@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Tuple, List, Optional
 import logging
 from contextlib import contextmanager
@@ -22,18 +23,67 @@ import paddle
 from paddle import nn
 import paddle.nn.functional as F
 
-from paddle.autograd import PyLayer
 from paddle.distributed.communication.group import Group
 from paddle.distributed import fleet
 import paddle.distributed as dist
 from paddle import Tensor
-from paddle.incubate.nn.functional import moe_combine
+from paddle.incubate.nn.functional import moe_combine, moe_gate_dispatch
 
 from paddleformers.trainer.plugins.timer import get_timers
-from models.moe.top2_gate_auto import TopKGateFused, TopKGateFusedAuto
-from models.moe.moe_utils_auto import get_flatten_mesh, get_mesh, _reshard
+from paddleformers.transformers.moe_layer_auto import dispatching, combining
+from models.top2_gate_auto import TopKGateFused
+from utils_auto.training_utils import get_flatten_mesh, get_mesh, _reshard
 
 logger = logging.getLogger(__name__)
+
+
+class MoEStatics(nn.Layer):
+    """
+    Stores MoE (Mixture of Experts) statistics
+    and expert usage information.
+    """
+
+    def __init__(self, config, layer_idx):
+        """
+        Initialize MoE statistics tracking.
+        Args:
+            config: Model configuration containing MoE parameters
+            layer_idx: Index of the MoE layer in the model
+        """
+        super().__init__()
+        self._cast_to_low_precision = False
+        self._cast_to_low_precison = False
+        num_experts = (
+            config.moe_num_experts[0]
+            if config.multimodel_experts
+            else config.moe_num_experts
+        )
+        if config.multimodel_experts:
+            assert (
+                len(set(config.moe_num_experts)) == 1
+            ), f"assume expert group has same size, got: {config.moe_num_experts}"
+
+        with paddle.utils.unique_name.guard(f"mm_layer_{layer_idx}_"):
+            num_experts_groups = (
+                len(config.moe_num_experts) if config.multimodel_experts else 1
+            )
+            p = self.create_parameter(
+                shape=[num_experts_groups, num_experts],
+                dtype="float32",
+                is_bias=True,
+                attr=paddle.ParamAttr(
+                    name=paddle.utils.unique_name.generate("corr_bias")
+                ),
+            )
+            p.stop_gradient = True
+            self.e_score_correction_bias = p
+            self.e_score_correction_bias.is_distributed = True
+            p = paddle.zeros(
+                shape=[num_experts_groups, num_experts],
+                dtype="int64",
+            )
+            p.stop_gradient = True
+            self.expert_usage = p
 
 
 @contextmanager
@@ -44,138 +94,6 @@ def profile(name):
     yield
     if get_timers() is not None:
         get_timers()(name).stop()
-
-
-class GateCombine(PyLayer):
-
-    @staticmethod
-    def forward(ctx, x, combine_weights, scatter_index):
-        ctx.save_for_backward(x, combine_weights, scatter_index)
-        ret = moe_combine.moe_combine(x, combine_weights, scatter_index)
-        return ret
-
-    @staticmethod
-    def backward(ctx, grad_y, *_):
-        x, combine_weights, scatter_index = ctx.saved_tensor()
-        grad_x, grad_combine_weight_helper = moe_combine.moe_combine_bwd(
-            x, combine_weights, scatter_index, grad_y
-        )
-        grad_combine_weight = grad_combine_weight_helper.sum(-1)
-        return grad_x, grad_combine_weight.reshape(ctx.combine_weights.shape), None
-
-
-def dispatching(x, dispatch_mask, scatter_index, num_experts, capacity):
-    output = None
-    orig_dtype = x.dtype
-    scatter_index = scatter_index.unbind(1)
-    dispatch_mask = dispatch_mask.unbind(1)
-    for i_scatter_index, i_dispatch_mask in zip(scatter_index, dispatch_mask):
-        init_output = paddle.zeros(
-            [num_experts * capacity, x.shape[-1]], dtype="float32"
-        )
-        updates = x * i_dispatch_mask.unsqueeze(-1).cast(x.dtype)
-
-        cur_out = paddle.scatter(
-            init_output,
-            i_scatter_index,
-            updates,
-            overwrite=False,
-        )
-        output = cur_out if output is None else cur_out + output
-        output = output.cast(orig_dtype) if output.dtype != orig_dtype else output
-    return output
-
-
-def combining(x, combine_weights, scatter_index):
-    dim = x.shape[-1]
-    scatter_index = scatter_index.reshape([-1])
-    num_k = combine_weights.shape[-1]
-    combine_weights = combine_weights.unsqueeze(1)
-    x = paddle.gather(x, scatter_index).reshape([-1, num_k, dim])
-    return paddle.matmul(combine_weights, x).squeeze(1)
-
-
-class MOELayer(nn.Layer):
-    def __init__(
-        self,
-        gate: nn.Layer,
-        experts: List[nn.Layer],
-        layer_idx: int,
-        shared_experts: Optional[List[nn.Layer]] = None,
-        group: Group = None,
-        recompute: bool = False,
-        k: int = 2,
-        all_to_all_dropout: float = 0,
-        group_experts: bool = False,
-        moe_statics=None,
-    ):
-
-        self.use_correction_bias = moe_statics is not None
-        self.moe_statics = moe_statics
-        if self.use_correction_bias:
-            logger.info(
-                f"using correction bias, aux-coef:{self.gate.config.moe_aux_loss_lambda}"
-            )
-            assert self.gate.config.moe_use_aux_free
-
-        self.is_mp_moe = (
-            hasattr(fleet.fleet, "_hcg")
-            and group is fleet.get_hybrid_communicate_group().get_model_parallel_group()
-        )
-        self.is_ep_moe = (
-            hasattr(fleet.fleet, "_hcg")
-            and hasattr(
-                fleet.get_hybrid_communicate_group(),
-                "get_moe_sharding_parallel_world_size",
-            )
-            and fleet.get_hybrid_communicate_group().get_moe_sharding_parallel_world_size()
-            > 0
-        )
-        is_dummy_moe = dist.get_world_size(group) == 1
-
-        for p in experts.parameters():
-            p.expert = not (self.is_mp_moe or is_dummy_moe)
-            p.no_sync = not (self.is_mp_moe or is_dummy_moe)
-            logger.info(f"expert no-sync={p.no_sync}-{p.name}")
-            if self.is_mp_moe or self.is_ep_moe:
-                p.is_distributed = True
-
-        expert_color = None
-        if self.is_ep_moe:
-            moe_grad_group = (
-                fleet.get_hybrid_communicate_group().get_moe_sharding_parallel_group()
-            )
-            expert_color = {"color": "moe_expert", "group": moe_grad_group}
-        elif (
-            self.config.offline_quant_expert_weight
-            and self.config.clear_origin_weight_when_offline_quant
-        ):
-            expert_color = {"color": "moe_expert"}
-
-        if expert_color is not None:
-            for p in self.experts.parameters():
-                setattr(p, "color", expert_color)
-
-        self.world_size = dist.get_world_size(self.group)
-        self.rank = dist.get_rank(self.group)
-        if self.world_size < 1:
-            self.world_size = 1
-        if self.rank < 0:
-            self.rank = 0
-
-        self.num_local_experts = len(self.experts)
-        self.dispatch_by_task = (
-            hasattr(self.gate, "dispatch_by_task") and self.gate.dispatch_by_task
-        )
-
-        if self.dispatch_by_task:
-            assert 0, "no supported, checkout earylier code"
-            assert self.num_local_experts == 1
-
-        self.input_preprocess = self.output_postprocess = None
-        self.group_experts = group_experts
-        self.config = self.gate.config
-        self.zero = paddle.to_tensor(0, dtype=paddle.float32)
 
 
 def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
@@ -191,14 +109,13 @@ def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
     if hard_gate:
         x_gatherd = F.embedding(scatter_index, x)
         return x_gatherd.squeeze(-2)
-    ret = paddle.incubate.nn.functional.moe_combine(x, combine_weights, scatter_index)
+    ret = moe_combine(x, combine_weights, scatter_index)
 
     ret.stop_gradient = False
     return ret
 
 
-class MOELayerAuto(MOELayer):
-
+class MOELayerAuto(nn.Layer):
     def __init__(
         self,
         gate: nn.Layer,
@@ -210,10 +127,11 @@ class MOELayerAuto(MOELayer):
         k=2,
         all_to_all_dropout=0,
         group_experts=False,
+        moe_statics=None,
         config=None,
         ipp=0,
     ):
-        nn.Layer.__init__(self)
+        super().__init__()
         self.config = config
         self.gate = gate
         self.layer_idx = layer_idx
@@ -270,6 +188,8 @@ class MOELayerAuto(MOELayer):
 
         self.input_preprocess = self.output_postprocess = None
         self.group_experts = group_experts
+        self.use_correction_bias = moe_statics is not None
+        self.moe_statics = moe_statics
 
     def fused_gate_logits_process(
         self, gate_logits, token_type_ids, offload_helper=None
@@ -524,7 +444,7 @@ class MOELayerAuto(MOELayer):
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.reshape([-1])
                 args = (token_type_ids,)
-            use_fuse = isinstance(self.gate, (TopKGateFusedAuto))
+            use_fuse = isinstance(self.gate, (TopKGateFused))
             if use_fuse:
                 (gate_logits, capacity, router_loss, local_capacity) = self.gate(
                     input, *args
@@ -548,15 +468,34 @@ class MOELayerAuto(MOELayer):
                 prob, max_prob = self.fused_gate_logits_process(
                     gate_logits, token_type_ids
                 )
+                if "corr_bias" in inspect.signature(moe_gate_dispatch).parameters:
+                    if self.use_correction_bias:
+                        compat_args = (self.moe_statics.e_score_correction_bias[0],)
+                    else:
+                        compat_args = (None,)
+                else:
+                    assert (
+                        not self.use_correction_bias
+                    ), "correction bias not supported, rebuild moe-ops"
+                    compat_args = ()
                 (
                     dispatched_input,
                     combine_weights_unnorm,
                     scatter_index,
                     dispatch_mask,
                     _,
-                ) = paddle.incubate.nn.functional.moe_gate_dispatch(
-                    input, prob, None, k, local_capacity, True
+                ) = moe_gate_dispatch(
+                    input, prob, *compat_args, k, local_capacity, True
                 )
+                dispatch_mask = paddle.diff(F.pad(dispatch_mask, (1, 0)))
+                if self.use_correction_bias:
+                    if self.gate.config.multimodel_experts:
+                        for i in range(len(self.moe_statics.expert_usage)):
+                            self.moe_statics.expert_usage[i] += dispatch_mask[
+                                self.gate.experts_type_mask[i]
+                            ].detach()
+                    else:
+                        self.moe_statics.expert_usage[0] += dispatch_mask.detach()
                 dispatched_input.stop_gradient = False
                 combine_weights_unnorm.stop_gradient = False
                 dispatch_mask.stop_gradient = True
@@ -585,8 +524,8 @@ class MOELayerAuto(MOELayer):
             else:
                 dispatched_input = dispatching(
                     input,
-                    dispatch_mask,
-                    scatter_index,
+                    dispatch_mask.unbind(1),
+                    scatter_index.unbind(1),
                     num_experts=self.config.moe_num_experts,
                     capacity=capacity,
                 )
@@ -630,10 +569,16 @@ class MOELayerAuto(MOELayer):
                     )
                 else:
                     expert_output = dist.reshard(
-                        expert_output, get_mesh(), [dist.Shard(0), dist.Replicate()]
+                        expert_output,
+                        get_mesh(self.ipp),
+                        [dist.Shard(0), dist.Replicate()],
                     )
-            use_fuse = isinstance(self.gate, (TopKGateFusedAuto))
+            use_fuse = isinstance(self.gate, (TopKGateFused))
             combine_fn = combining_fused_auto if use_fuse else combining
+            combine_weights = (
+                combine_weights if use_fuse else combine_weights.unsqueeze(1)
+            )
+
             combined_output = combine_fn(expert_output, combine_weights, scatter_index)
 
             if self.output_postprocess is not None:

@@ -22,27 +22,31 @@ import numpy as np
 import paddle
 from omegaconf import ListConfig, DictConfig
 from paddle.distributed.fleet import fleet
+from paddle.distributed.auto_parallel import get_mesh
 from paddleformers.data import Stack
 from paddleformers.data.causal_dataset import (
     build_train_valid_test_datasets,
     check_data_split,
 )
 from paddle.distributed.fleet.meta_parallel.pipeline_parallel import PipelineParallel
-from paddleformers.trainer import PdArgumentParser, get_last_checkpoint
+from paddleformers.trainer.trainer_utils import get_last_checkpoint
 
-from config import get_config
-from models.ernie import ErnieForCausalLMAuto
-from models.ernie.configuration_auto import (
+from data_processor.utils.argparser import PdArgumentParser, get_config
+from models import ErnieForCausalLMAuto
+from models.configuration_auto import (
     ErnieConfig,
     ErnieMoEConfig,
 )
+from trainers import (
+    AutoPretrainingTrainer,
+    AutoPreTrainingArguments,
+    MoECorrectionBiasAdjustCallback,
+)
 
-from src.callbacks import GlobalRNGCallback
-from src.tokenizers.tokenization_eb_v2 import ErnieBotTokenizer
-from src.trainers import AutoPretrainingTrainer, AutoPreTrainingArguments
-from src.utils_auto import setup_logger_output_file, logger
-from src.utils_auto.misc import global_training_logs
+from utils_auto import setup_logger_output_file, logger
+from utils_auto.misc import global_training_logs
 
+from tokenization import ErnieTokenizer
 
 from paddle.distributed.fleet import collective_perf
 from paddle import Tensor
@@ -423,7 +427,7 @@ def set_dtype(args):
 
 
 def setup_tokenizer(args, config):
-    tokenizer = ErnieBotTokenizer.from_pretrained(args.tokenizer_name)
+    tokenizer = ErnieTokenizer.from_pretrained(args.tokenizer_name)
     tokenizer.ignored_index = config.ignored_index
     logger.info(
         f"Using tokenizer={type(tokenizer)}, bos:{tokenizer.bos_token_id} "
@@ -449,6 +453,23 @@ def get_checkpoint(args, output_dir):
         )
 
     return args.resume_from_checkpoint or last_checkpoint
+
+
+def set_moe_config(config):
+    if hasattr(config, "use_moe") and config.use_moe:
+        if config.moe_group in {"mp", "model", "tp", "mpdp"}:
+            assert config.sequence_parallel
+            logger.info(
+                f"disable FFN tensor model parallel, moe-group={config.moe_group}"
+            )
+            config.disable_ffn_model_parallel = True
+
+        config.moe_world_size = 1
+        if config.moe_group in get_mesh().dim_names:
+            config.moe_world_size = max(
+                config.moe_world_size,
+                get_mesh().get_dim_size(config.moe_group),
+            )
 
 
 def main():
@@ -508,6 +529,8 @@ def main():
     ):
         replace_cross_entropy()
 
+    set_moe_config(cfg)
+
     tokenizer = setup_tokenizer(args, cfg)
 
     with paddle.LazyGuard():
@@ -523,7 +546,14 @@ def main():
     )
 
     # 6. prepare for train/eval
-    callbacks = [GlobalRNGCallback()]
+    callbacks = []
+    if getattr(cfg, "moe_use_aux_free", False):
+        logger.info("Adding aux free callback")
+        callbacks += [
+            MoECorrectionBiasAdjustCallback(
+                args.moe_use_aux_free_update_coef, args.sequence_parallel
+            )
+        ]
     init_parameters(model)
 
     trainer = AutoPretrainingTrainer(

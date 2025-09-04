@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .pretraining_trainer import (
-    PreTrainingArguments,
-    PretrainingTrainer,
-    WeightedDistributedSampler,
-)
+import random
 
-__all__ = [
-    "PretrainingTrainer",
-    "PreTrainingArguments",
-    "WeightedDistributedSampler",
-]
+from paddleformers.trainer.trainer_callback import TrainerCallback
+
+__all__ = ["GlobalRNGCallback"]
+
+
+class GlobalRNGCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, model, **kwargs):
+        random.Random(state.global_step)
