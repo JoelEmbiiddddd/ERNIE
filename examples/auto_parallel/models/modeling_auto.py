@@ -30,7 +30,7 @@ from paddle.distributed.fleet.utils import recompute
 from paddle.incubate.nn.layer.fused_dropout_add import FusedDropoutAdd
 from paddle.distributed.fleet.layers.mpu.random import get_rng_state_tracker
 
-from models.top2_gate_auto import TopKGateFusedAuto
+from models.top2_gate_auto import TopKGateFused
 
 
 from paddleformers.transformers.model_outputs import (
@@ -310,7 +310,7 @@ def get_gate(
         logger.info("MOE-GATE:-hard-gate")
     else:
         logger.info(f"MOE-GATE:-{config.moe_gate}")
-        gate = TopKGateFusedAuto(
+        gate = TopKGateFused(
             config, layer_idx=layer_idx, group=config.moe_group, ipp=ipp
         )
 
@@ -588,7 +588,6 @@ class ErnieAttentionAuto(nn.Layer):
         self.num_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.head_dim = self.hidden_size // self.num_heads
-        self.use_recompute_attn = config.use_recompute_attn
         self.is_gqa = (
             config.num_key_value_heads is not None
             and config.num_key_value_heads != self.num_heads
@@ -718,36 +717,18 @@ class ErnieAttentionAuto(nn.Layer):
             key_states = paddle.transpose(key_states, [1, 0, 2, 3])
             value_states = paddle.transpose(value_states, [1, 0, 2, 3])
 
-        if self.use_recompute_attn:
-            assert past_key_value is None, "do not use kv cache in recompute"
-            assert not use_cache
-            attn_output, attn_weights, past_key_value = recompute(
-                self.rope_attn,
-                None,
-                query_states,
-                key_states,
-                value_states,
-                attention_mask,
-                position_ids,
-                output_attentions,
-                past_key_value,
-                use_cache,
-                inbatch_pack_offset,
-                use_reentrant=True,
-            )
-        else:
-            attn_output, attn_weights, past_key_value = self.rope_attn(
-                mix_layer=None,
-                query_states=query_states,
-                key_states=key_states,
-                value_states=value_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                output_attentions=output_attentions,
-                past_key_value=past_key_value,
-                use_cache=use_cache,
-                inbatch_pack_offset=inbatch_pack_offset,
-            )
+        attn_output, attn_weights, past_key_value = self.rope_attn(
+            mix_layer=None,
+            query_states=query_states,
+            key_states=key_states,
+            value_states=value_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            output_attentions=output_attentions,
+            past_key_value=past_key_value,
+            use_cache=use_cache,
+            inbatch_pack_offset=inbatch_pack_offset,
+        )
 
         if self.config.sequence_parallel:
             attn_output = self.o_proj(paddle.transpose(attn_output, [1, 0, 2]))
@@ -1250,7 +1231,7 @@ class ErniePretrainedModelAuto(PretrainedModel):
                         f' type={type(layer)},norm={layer.weight.astype("float32").norm()}'
                     )
 
-        elif isinstance(layer, TopKGateFusedAuto):
+        elif isinstance(layer, TopKGateFused):
             if not hasattr(layer, "weight"):
                 return
             with rng_tracker("model_parallel_rng"):
