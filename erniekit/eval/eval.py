@@ -241,8 +241,11 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
     else:
         download_source_kwargs["download_hub"] = model_args.download_hub
 
-    convert_from_kwargs = {"convert_from_hf" if paddleformers_version > "0.2" else "convert_from_torch": False}
-
+    convert_from_kwargs = {
+        (
+            "convert_from_hf" if paddleformers_version > "0.2" else "convert_from_torch"
+        ): False
+    }
     model_config = Ernie4_5_MoeConfig.from_pretrained(
         model_args.model_name_or_path,
         dtype=dtype,

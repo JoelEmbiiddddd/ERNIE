@@ -291,8 +291,11 @@ def main():
     else:
         download_source_kwargs["download_hub"] = model_args.download_hub
 
-    convert_from_kwargs = {"convert_from_hf" if paddleformers_version > "0.2" else "convert_from_torch": False}
-
+    convert_from_kwargs = {
+        (
+            "convert_from_hf" if paddleformers_version > "0.2" else "convert_from_torch"
+        ): False
+    }
     if model_args.moe_use_aux_free is False:
         model_kwargs.update({"moe_use_aux_free": False})
     config = Ernie4_5_MoeConfig.from_pretrained(**model_kwargs)
