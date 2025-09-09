@@ -12,21 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .pretraining_trainer_auto import AutoPretrainingTrainer, AutoPreTrainingArguments
-from .callbacks_auto import (
+from .pretraining_trainer import PretrainingTrainer, PreTrainingArguments
+from .callbacks import (
     TensorBoardCallback,
-    LoggingCallback,
-    GlobalRNGCallback,
-    StopperCallback,
     MoECorrectionBiasAdjustCallback,
 )
 
 __all__ = [
-    "AutoPretrainingTrainer",
-    "AutoPreTrainingArguments",
+    "PretrainingTrainer",
+    "PreTrainingArguments",
     "TensorBoardCallback",
-    "LoggingCallback",
-    "GlobalRNGCallback",
-    "StopperCallback",
     "MoECorrectionBiasAdjustCallback",
 ]

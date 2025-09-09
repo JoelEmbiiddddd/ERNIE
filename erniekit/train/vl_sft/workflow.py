@@ -432,6 +432,8 @@ def run_vl_sft(
     cfg.recompute_granularity = model_args.recompute_granularity
     cfg.use_recompute_loss_fn = model_args.use_recompute_loss_fn
     cfg.use_sparse_head_and_loss_fn = model_args.use_sparse_head_and_loss_fn
+    cfg.loss_subbatch_seqlen = model_args.loss_subbatch_seqlen
+    cfg.pp_seg_method = model_args.pp_seg_method
     cfg.use_fused_head_and_loss_fn = model_args.use_fused_head_and_loss_fn
     cfg.moe_multimodal_dispatch_use_allgather = (
         model_args.moe_multimodal_dispatch_use_allgather

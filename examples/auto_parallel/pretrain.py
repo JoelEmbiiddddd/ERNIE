@@ -22,6 +22,7 @@ import numpy as np
 import paddle
 from omegaconf import ListConfig, DictConfig
 from paddle.distributed.fleet import fleet
+from paddle.distributed.auto_parallel import get_mesh
 from paddleformers.data import Stack
 from paddleformers.data.causal_dataset import (
     build_train_valid_test_datasets,
@@ -31,19 +32,19 @@ from paddle.distributed.fleet.meta_parallel.pipeline_parallel import PipelinePar
 from paddleformers.trainer.trainer_utils import get_last_checkpoint
 
 from data_processor.utils.argparser import PdArgumentParser, get_config
-from models import ErnieForCausalLMAuto
-from models.configuration_auto import (
+
+from models.configuration import (
     ErnieConfig,
     ErnieMoEConfig,
 )
 from trainers import (
-    AutoPretrainingTrainer,
-    AutoPreTrainingArguments,
+    PretrainingTrainer,
+    PreTrainingArguments,
     MoECorrectionBiasAdjustCallback,
 )
 
-from utils_auto import setup_logger_output_file, logger
-from utils_auto.misc import global_training_logs
+from utils import setup_logger_output_file, logger, mock_offload_optimizer
+from utils.misc import global_training_logs
 
 from tokenization import ErnieTokenizer
 
@@ -54,6 +55,20 @@ from paddle.distributed.fleet.base import topology as tp
 from paddle.distributed import collective
 from paddle.tensor.manipulation import reshape
 from typing import Literal, TypeAlias
+
+# USE_VPP=0: Implement parallelism using the intermediate API.
+# USE_VPP=1: Implement parallelism using the basic API; the intermediate API does not support VPP for the time being.
+use_vpp = os.environ.get("USE_VPP", "0")
+if use_vpp == "0":
+    from models.modeling import ErnieForCausalLM
+
+    logger.info("Training with the intermediate API. Do not support VPP.")
+elif use_vpp == "1":
+    from models.modeling_vpp import ErnieForCausalLM
+
+    logger.info("Training VPP parallelism with the basic API")
+else:
+    raise ValueError(f"Invalid environment args USE_VPP={use_vpp}")
 
 _ReduceMode: TypeAlias = Literal["mean", "sum", "none"]
 
@@ -464,10 +479,10 @@ def set_moe_config(config):
             config.disable_ffn_model_parallel = True
 
         config.moe_world_size = 1
-        if config.moe_group in fleet.auto.get_mesh().dim_names:
+        if config.moe_group in get_mesh().dim_names:
             config.moe_world_size = max(
                 config.moe_world_size,
-                fleet.auto.get_mesh().get_dim_size(config.moe_group),
+                get_mesh().get_dim_size(config.moe_group),
             )
 
 
@@ -482,7 +497,7 @@ def main():
     trainer_args = {
         k: format_config_value(v) for k, v in dict(config.trainer_args).items()
     }
-    parser = PdArgumentParser(AutoPreTrainingArguments)
+    parser = PdArgumentParser(PreTrainingArguments)
     (args,) = parser.parse_dict(dict(**model_args, **trainer_args))
 
     # 2. check and update
@@ -522,9 +537,12 @@ def main():
     }
     logger.info(f"Model config from YAML: {json.dumps(model_config, indent=4)}")
     cfg = setup_model_config(args, model_config)
+    if args.offload_optimizer:
+        mock_offload_optimizer()
     if (
         "replace_with_parallel_cross_entropy" in args.tensor_parallel_config
         and cfg.tensor_parallel_degree > 1
+        and not (args.use_intermediate_api and args.pipeline_schedule_mode == "FThenB")
     ):
         replace_cross_entropy()
 
@@ -533,7 +551,7 @@ def main():
     tokenizer = setup_tokenizer(args, cfg)
 
     with paddle.LazyGuard():
-        model = ErnieForCausalLMAuto(cfg)
+        model = ErnieForCausalLM(cfg)
 
     logger.info(f"Using model: {type(model)}, config: {model.config}")
     paddle.set_default_dtype("float32")
@@ -555,7 +573,7 @@ def main():
         ]
     init_parameters(model)
 
-    trainer = AutoPretrainingTrainer(
+    trainer = PretrainingTrainer(
         model=model,
         args=args,
         data_collator=data_collator,

@@ -30,9 +30,9 @@ from paddle import Tensor
 from paddle.incubate.nn.functional import moe_combine, moe_gate_dispatch
 
 from paddleformers.trainer.plugins.timer import get_timers
-from paddleformers.transformers.moe_layer_auto import dispatching, combining
-from models.top2_gate_auto import TopKGateFused, TopKGateFusedAuto
-from utils_auto.training_utils import get_flatten_mesh, get_mesh, _reshard
+from paddleformers.transformers.moe_layer import dispatching, combining
+from models.top2_gate import TopKGateFused
+from utils.training_utils import get_flatten_mesh, get_mesh, _reshard
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class MoEStatics(nn.Layer):
                 len(config.moe_num_experts) if config.multimodel_experts else 1
             )
             p = self.create_parameter(
-                shape=[num_experts_groups, num_experts],
+                shape=[num_experts_groups * num_experts],
                 dtype="float32",
                 is_bias=True,
                 attr=paddle.ParamAttr(
@@ -96,7 +96,7 @@ def profile(name):
         get_timers()(name).stop()
 
 
-def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
+def combining_fused(x, combine_weights, scatter_index, hard_gate=False):
     """
     Args:
         x: Tensor[seq, dim]
@@ -115,7 +115,7 @@ def combining_fused_auto(x, combine_weights, scatter_index, hard_gate=False):
     return ret
 
 
-class MOELayerAuto(nn.Layer):
+class MOELayer(nn.Layer):
     def __init__(
         self,
         gate: nn.Layer,
@@ -131,7 +131,7 @@ class MOELayerAuto(nn.Layer):
         config=None,
         ipp=0,
     ):
-        super().__init__(self)
+        super().__init__()
         self.config = config
         self.gate = gate
         self.layer_idx = layer_idx
@@ -444,7 +444,7 @@ class MOELayerAuto(nn.Layer):
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.reshape([-1])
                 args = (token_type_ids,)
-            use_fuse = isinstance(self.gate, (TopKGateFusedAuto))
+            use_fuse = isinstance(self.gate, (TopKGateFused))
             if use_fuse:
                 (gate_logits, capacity, router_loss, local_capacity) = self.gate(
                     input, *args
@@ -470,7 +470,14 @@ class MOELayerAuto(nn.Layer):
                 )
                 if "corr_bias" in inspect.signature(moe_gate_dispatch).parameters:
                     if self.use_correction_bias:
-                        compat_args = (self.moe_statics.e_score_correction_bias[0],)
+                        num_experts = (
+                            self.config.moe_num_experts[0]
+                            if self.config.multimodel_experts
+                            else self.config.moe_num_experts
+                        )
+                        compat_args = (
+                            self.moe_statics.e_score_correction_bias[:num_experts],
+                        )
                     else:
                         compat_args = (None,)
                 else:
@@ -560,21 +567,8 @@ class MOELayerAuto(nn.Layer):
             else:
                 expert_output = expert_output.reshape([-1, expert_output.shape[-1]])
 
-            if not self.config.moe_use_all2all:
-                if self.config.moe_group == "mp":
-                    expert_output = dist.reshard(
-                        expert_output,
-                        get_mesh(self.ipp),
-                        [dist.Replicate(), dist.Replicate()],
-                    )
-                else:
-                    expert_output = dist.reshard(
-                        expert_output,
-                        get_mesh(self.ipp),
-                        [dist.Shard(0), dist.Replicate()],
-                    )
-            use_fuse = isinstance(self.gate, (TopKGateFusedAuto))
-            combine_fn = combining_fused_auto if use_fuse else combining
+            use_fuse = isinstance(self.gate, (TopKGateFused))
+            combine_fn = combining_fused if use_fuse else combining
             combine_weights = (
                 combine_weights if use_fuse else combine_weights.unsqueeze(1)
             )
@@ -621,8 +615,6 @@ class MOELayerAuto(nn.Layer):
                     get_flatten_mesh(get_mesh(self.ipp)),
                     [dist.Shard(0)],
                 )
-            else:
-                input = input.reshape([-1, input.shape[-1]])
         else:
             orig_shape = None
         assert (
@@ -718,9 +710,5 @@ class MOELayerAuto(nn.Layer):
                     router_loss2,
                     get_mesh(self.ipp),
                     [dist.Replicate(), dist.Replicate()],
-                )
-            else:
-                combined_output = combined_output.reshape(
-                    orig_shape[:-1] + [combined_output.shape[-1]]
                 )
         return combined_output, combine_weights, router_loss2, gate_logits
