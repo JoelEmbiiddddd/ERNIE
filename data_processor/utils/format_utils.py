@@ -19,7 +19,6 @@ schema_utils
 """
 
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 validate = None
@@ -143,7 +142,9 @@ def check_schema_format(sample, data_name, data_type):
         "video",
     ], f"[ERROR] {data_name} schema no support {data_type}!"
 
-    assert validate(sample, MULTI_MODAL_SCHEMA) is None, f"[ERROR] {data_name} schema error!\n{ValidationError}"
+    assert (
+        validate(sample, MULTI_MODAL_SCHEMA) is None
+    ), f"[ERROR] {data_name} schema error!\n{ValidationError}"
 
     for one in sample.get("text_info", []):
         points = one.get("points", None)
