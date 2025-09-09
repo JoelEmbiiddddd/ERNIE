@@ -28,7 +28,6 @@ from collections import OrderedDict
 from copy import deepcopy
 
 import numpy as np
-import yaml
 
 from data_processor.steps.input_ids_messaging import (
     data_adaptive,
@@ -85,7 +84,6 @@ class ExampleToFeature(ProcessorBase):
     def __init__(
         self,
         tokenizer,
-        data_filelist=None,
         corpus_name="default",
         im_prefix_length=64,
         max_seq_length=8192,
@@ -107,25 +105,13 @@ class ExampleToFeature(ProcessorBase):
     ):
         super().__init__(None)
 
-        self.data_filelist = data_filelist
-        if data_filelist:
-            with open(data_filelist, "r", encoding="utf-8") as f:
-                datasets_config = yaml.load(f.read(), yaml.FullLoader)["datasets"]
-
-            for dataset_config in datasets_config:
-                if dataset_config["name"] == corpus_name:
-                    break
-            else:
-                raise ValueError(f"{corpus_name} not in {data_filelist}")
-
-        else:
-            # for utterance, fake a dataset_config
-            dataset_config = {
-                "name": corpus_name,
-                "dataset_type": "default",
-                "prompt_file": None,
-                "data_setting": "{}",
-            }
+        # for utterance, fake a dataset_config
+        dataset_config = {
+            "name": corpus_name,
+            "dataset_type": "default",
+            "prompt_file": None,
+            "data_setting": "{}",
+        }
 
         # data_info
         self.data_info = {
@@ -302,18 +288,15 @@ class ExampleToFeature(ProcessorBase):
 
         prompt_id = self.prompt_rng.choice(self.data_info["prompt_id_list"])
         prompt = self.data_info["prompt_list"][prompt_id]
-        if not self.is_training or self.data_filelist is None:
-            if "image_info" not in meta or len(meta["image_info"]) == 0:
-                dataset_type = "default"
-                meta["image_info"] = []
-            else:
-                data_types = [item["image_type"] for item in meta["image_info"]]
-                if len(set(data_types)) == 1:
-                    dataset_type = (
-                        "default" if data_types[0] == "image" else data_types[0]
-                    )
+        if "image_info" not in meta or len(meta["image_info"]) == 0:
+            dataset_type = "default"
+            meta["image_info"] = []
         else:
-            dataset_type = self.data_info["dataset_type"]
+            data_types = [item["image_type"] for item in meta["image_info"]]
+            if len(set(data_types)) == 1:
+                dataset_type = (
+                    "default" if data_types[0] == "image" else data_types[0]
+                )
         dataset_name = self.data_info["dataset_name"]
         data_type = DATASET_TYPE_TO_DATA_TYPE.get(dataset_type, None)
         assert data_type is not None, f"Unknow dataset type: {dataset_type}."

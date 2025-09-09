@@ -40,6 +40,8 @@ class End2EndProcessor(ProcessorBase):
         super().__init__(args)
         self.utterance_process = UtteranceProcessor(args, tokenizer)
         self.coarse_processor = CoarseProcessor(args)
+        # print("------------------------------")
+        # print("pzl: args: ", args)
         self.input_ids_massage_processor = InputIdsMassageProcessor(
             args, tokenizer, image_preprocess
         )

@@ -85,7 +85,6 @@ class InputIdsMassageInferArguments(InputIdsMassageArguments):
     args for InputIdsMassageProcessor
     """
 
-    data_filelist: str = field(default=None, metadata={"help": "data file list"})
     random_seed: int = field(default=42, metadata={"help": "random seed"})
     vision_model_name_or_path: str = field(
         default=None, metadata={"help": "image preprocess path"}
