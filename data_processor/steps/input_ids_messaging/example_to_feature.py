@@ -21,7 +21,6 @@ Mapper for input_ids_messaging
 
 import copy
 import json
-import os
 import random
 import traceback
 from collections import OrderedDict
@@ -92,7 +91,6 @@ class ExampleToFeature(ProcessorBase):
         adaptive_max_imgtoken_rate=None,
         special_tokens_info=None,
         loc_coordinate_num=1001,
-        prompt_dir=None,
         one_sample_in_one_seq=False,
         variable_resolution=False,
         spatial_conv_size=1,
@@ -109,7 +107,6 @@ class ExampleToFeature(ProcessorBase):
         dataset_config = {
             "name": corpus_name,
             "dataset_type": "default",
-            "prompt_file": None,
             "data_setting": "{}",
         }
 
@@ -118,18 +115,6 @@ class ExampleToFeature(ProcessorBase):
             "dataset_type": dataset_config["dataset_type"],
             "dataset_name": dataset_config["name"],
         }
-
-        # prompt
-        if prompt_dir and dataset_config["prompt_file"]:
-            prompt_filepath = os.path.join(prompt_dir, dataset_config["prompt_file"])
-            with open(prompt_filepath, encoding="utf-8") as f:
-                prompt_list = f.read().strip("\n").split("\n")
-
-        else:
-            # for untterance, use empty prompt
-            prompt_list = [""]
-        self.data_info["prompt_list"] = prompt_list
-        self.data_info["prompt_id_list"] = list(range(len(prompt_list)))
 
         # adaptive
         self.variable_resolution = variable_resolution
@@ -286,8 +271,7 @@ class ExampleToFeature(ProcessorBase):
             meta (dict): one sample
         """
 
-        prompt_id = self.prompt_rng.choice(self.data_info["prompt_id_list"])
-        prompt = self.data_info["prompt_list"][prompt_id]
+        prompt = ""
         if "image_info" not in meta or len(meta["image_info"]) == 0:
             dataset_type = "default"
             meta["image_info"] = []

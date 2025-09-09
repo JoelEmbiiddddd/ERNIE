@@ -34,8 +34,6 @@ class InputIdsMassageArguments:
 
     use_pic_id: bool = field(default=True, metadata={"help": "add Picture Id"})
 
-    prompt_dir: str = field(default="./", metadata={"help": "prompt path"})
-
     serialize_output: bool = field(default=True, metadata={"help": "serialize output"})
     one_sample_in_one_seq: bool = field(
         default=False, metadata={"help": "one sample in one seq"}
