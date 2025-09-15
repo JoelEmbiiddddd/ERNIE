@@ -43,6 +43,7 @@ from data_processor.utils.constant import (
 from data_processor.utils.io_utils import image_info_2_hash
 from data_processor.utils.logger_utils import logger
 from data_processor.utils.processor_base import ProcessorBase
+from data_processor.utils.video_utils import group_frame_by_video
 from ernie.tokenizer_vl import (
     NOT_FOUND_TOKEN_ID,
     SFT_IMAGE_END_TOKEN,
@@ -348,6 +349,7 @@ class ExampleToFeature(ProcessorBase):
                     img_one["image_type"] = img_one.get("image_type", "image")
 
             """[STEP 0] adaptiver """
+            sample_grouped_info = group_frame_by_video(meta)
             adaptiver = getattr(data_adaptive, "Adaptive")(
                 image_processor=self.image_processor,
                 spatial_conv_size=self.spatial_conv_size,
@@ -363,6 +365,7 @@ class ExampleToFeature(ProcessorBase):
 
             """[STEP 1] process"""
             metas = [meta]
+            processor = None
             if dataset_type in DATASET_TYPE_TO_PROCESS_FN:
                 obj_process = getattr(
                     data_process, DATASET_TYPE_TO_PROCESS_FN[dataset_type]
@@ -381,9 +384,11 @@ class ExampleToFeature(ProcessorBase):
                     is_training=self.is_training,
                     variable_resolution=self.variable_resolution,
                     rope_3d=self.rope_3d,
+                    sample_grouped_info=sample_grouped_info,
                 )
+
                 meta = processor.process(
-                    sample=deepcopy(meta),
+                    sample=meta,
                     dataset_name=dataset_name,
                     data_type=data_type,
                     dataset_type=dataset_type,
@@ -398,12 +403,18 @@ class ExampleToFeature(ProcessorBase):
             for idx, meta in enumerate(metas):
                 if not meta:
                     continue
+
                 """[STEP 2] adaptive"""
-                meta = adaptiver.process(sample=deepcopy(meta))
+                meta = adaptiver.process(
+                    sample=meta,
+                    sample_grouped_info=(
+                        processor.sample_grouped_info if processor else None
+                    ),
+                )
 
                 """[STEP 3] text tokenizer & add placeholder"""
                 meta = self._text_tokenization_add_placeholder(
-                    deepcopy(meta),
+                    meta,
                     dataset_name,
                     data_type,
                     adaptiver,
@@ -411,12 +422,16 @@ class ExampleToFeature(ProcessorBase):
                 )
 
                 """[STEP 4] image_wise type id"""
-                meta = self._add_image_wise_type_id(deepcopy(meta), data_type)
+                meta = self._add_image_wise_type_id(meta, data_type)
 
                 """[STEP 5] add mask"""
                 with SlidingWindowsContextManager(self.tokenizer, self.is_training):
                     for one in self._sliding_window(
-                        meta, dataset_name, data_type, adaptiver
+                        meta,
+                        dataset_name,
+                        data_type,
+                        adaptiver,
+                        processor.sample_grouped_info if processor else None,
                     ):
                         if one is not None:
                             assert len(one["ids_type"]) == len(
@@ -630,7 +645,9 @@ class ExampleToFeature(ProcessorBase):
 
         return sample
 
-    def _sliding_window(self, sample, dataset_name, data_type, adaptiver):
+    def _sliding_window(
+        self, sample, dataset_name, data_type, adaptiver, sample_grouped_info
+    ):
         """
         sliding_window
         """
@@ -755,11 +772,13 @@ class ExampleToFeature(ProcessorBase):
                 if self.variable_resolution:
                     assert (
                         sample_ids == self.image_token_id
-                    ).sum() == adaptiver.get_images_token_num(image_info), (
+                    ).sum() == adaptiver.get_images_token_num(
+                        image_info, sample_grouped_info
+                    ), (
                         "(sample_ids == self.image_token_id).sum(): "
                         + f"{(sample_ids == self.image_token_id).sum()}, "
-                        + "adaptiver.get_images_token_num(image_info): "
-                        + f"{adaptiver.get_images_token_num(image_info)}"
+                        + "adaptiver.get_images_token_num(image_info, sample_grouped_info): "
+                        + f"{adaptiver.get_images_token_num(image_info, sample_grouped_info)}"
                     )
 
                 assert len(image_info) == len(
