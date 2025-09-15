@@ -45,8 +45,6 @@ from data_processor.utils.logger_utils import logger
 from data_processor.utils.processor_base import ProcessorBase
 from ernie.tokenizer_vl import (
     NOT_FOUND_TOKEN_ID,
-    SFT_ASR_END_TOKEN,
-    SFT_ASR_START_TOKEN,
     SFT_IMAGE_END_TOKEN,
     SFT_IMAGE_START_TOKEN,
     SFT_VIDEO_END_TOKEN,
@@ -198,8 +196,6 @@ class ExampleToFeature(ProcessorBase):
         self.image_end_token = SFT_IMAGE_END_TOKEN
         self.video_start_token = SFT_VIDEO_START_TOKEN
         self.video_end_token = SFT_VIDEO_END_TOKEN
-        self.asr_start_token = SFT_ASR_START_TOKEN
-        self.asr_end_token = SFT_ASR_END_TOKEN
         self.cls_token_id = self.vocab.get(self.cls_token, self.not_found_token_id)
         self.sep_token_id = self.vocab.get(self.sep_token, self.not_found_token_id)
         self.image_start_id = self.vocab.get(
@@ -214,10 +210,6 @@ class ExampleToFeature(ProcessorBase):
         self.video_end_id = self.vocab.get(
             self.video_end_token, self.not_found_token_id
         )
-        self.asr_start_id = self.vocab.get(
-            self.asr_start_token, self.not_found_token_id
-        )
-        self.asr_end_id = self.vocab.get(self.asr_end_token, self.not_found_token_id)
         self.eos_token_id = self.vocab.get(self.eos_token, self.not_found_token_id)
         # system setting start
         self.bosys_token = self.tokenizer.special_tokens_map.get(
@@ -238,8 +230,6 @@ class ExampleToFeature(ProcessorBase):
         self.token_type_mapping[self.image_end_id] = IDS_TYPE_FLAG["image"]
         self.token_type_mapping[self.video_start_id] = IDS_TYPE_FLAG["image"]
         self.token_type_mapping[self.video_end_id] = IDS_TYPE_FLAG["image"]
-        self.token_type_mapping[self.asr_start_id] = IDS_TYPE_FLAG["image"]
-        self.token_type_mapping[self.asr_end_id] = IDS_TYPE_FLAG["image"]
 
         if self.not_found_token_id in self.token_type_mapping:
             # TODO How to fix unfound special token.

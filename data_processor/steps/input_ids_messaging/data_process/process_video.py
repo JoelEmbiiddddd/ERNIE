@@ -30,8 +30,6 @@ from data_processor.utils.logger_utils import logger
 from data_processor.utils.image_enhance import RandomSeedContext
 from data_processor.utils.video_utils import group_frame_by_video
 from ernie.tokenizer_vl import (
-    SFT_ASR_END_TOKEN,
-    SFT_ASR_START_TOKEN,
     SFT_IMAGE_END_TOKEN,
     SFT_IMAGE_START_TOKEN,
 )
@@ -69,9 +67,6 @@ class VideoProcess(Process):
         self.image_start_token = SFT_IMAGE_START_TOKEN
         self.image_end_token = SFT_IMAGE_END_TOKEN
 
-        self.asr_start_token = SFT_ASR_START_TOKEN
-        self.asr_end_token = SFT_ASR_END_TOKEN
-
         self.variable_resolution = variable_resolution
         self.rope_3d = rope_3d
 
@@ -93,8 +88,6 @@ class VideoProcess(Process):
         """[STEP 3] add special token"""
         if self.rope_3d:
             sample = self.split_video(sample)
-
-        # sample = self.concat_adjacent_asr(sample)
 
         sample = self.add_special_tags(sample)
 
@@ -121,7 +114,7 @@ class VideoProcess(Process):
 
     def add_special_tags(self, sample):
         """
-        add special tag: <|IMAGE_START|> <|IMAGE_END|> <|ASR_START|> <|ASR_END|>
+        add special tag: <|IMAGE_START|> <|IMAGE_END|>
         """
         assert len(sample["image_info"]) % self.temporal_conv_size == 0
         text_info = sample["text_info"]
@@ -157,27 +150,6 @@ class VideoProcess(Process):
                     len([i for i in text_info if i["text"] == self.image_end_token])
                     == len(image_info) // 2
                 )
-
-            # add special tag
-            text_one_index = 0
-            while text_one_index < len(text_info):
-                if text_info[text_one_index].get("is_asr", False):
-                    # add asr start and end
-                    text_info = (
-                        text_info[:text_one_index]
-                        + [{"text": self.asr_start_token, "tag": "mask"}]
-                        + [text_info[text_one_index]]
-                        + [{"text": self.asr_end_token, "tag": "mask"}]
-                        + text_info[text_one_index + 1 :]
-                    )
-
-                    for img_index in range(len(image_info)):
-                        if image_info[img_index]["matched_text_index"] > text_one_index:
-                            image_info[img_index]["matched_text_index"] += 2
-
-                    text_one_index += 2
-
-                text_one_index += 1
 
         sample["text_info"] = text_info
         sample["image_info"] = image_info
@@ -366,12 +338,6 @@ class VideoProcess(Process):
         for item in meta["text_info"]:
             text_token_count += len(self.tokenizer.encode(item["text"])["input_ids"])
         text_token_count += 1  # for eos token
-
-        # consider asr token
-        if not self.is_pretraining:
-            text_token_count += sum(
-                [2 for i in meta["text_info"] if i.get("is_asr", False)]
-            )
 
         if not self.is_training:
             text_token_count += self.max_dec_len

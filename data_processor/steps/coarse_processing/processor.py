@@ -51,7 +51,6 @@ class CoarseProcessor(ProcessorBase):
         self.video_max_frames = args.video_max_frames
         self.video_target_frames = args.video_target_frames
         self.video_frames_sample = args.video_frames_sample
-        self.video_use_asr = args.video_use_asr
 
     def set_video_frame_args(self, video_frame_args, video_meta):
         """
@@ -163,7 +162,6 @@ class CoarseProcessor(ProcessorBase):
             )
 
             assert len(time_stamps) == len(ret)
-            asr_cnt = 0
             for img_idx, (img, time_stamp) in enumerate(zip(ret, time_stamps)):
                 # no need matched text any more
                 image_ele = {
@@ -178,52 +176,6 @@ class CoarseProcessor(ProcessorBase):
                 new_sequence.append(
                     ("image", image_ele)
                 )  # make video into image frame element
-
-                # add asr right after the frame
-
-                if self.video_use_asr and "asr" in video_one:
-                    # asr's format: [subtitle, start_second, end_second]
-                    asr = video_one["asr"]
-
-                    while (
-                        asr_cnt < len(video_one["asr"])
-                        and asr[asr_cnt][-1] < time_stamp
-                    ):
-                        time_start = round(asr[asr_cnt][1], 1)
-                        time_end = round(asr[asr_cnt][2], 1)
-                        asr_text = asr[asr_cnt][0].strip()
-
-                        text_ele = {
-                            "text": f"[{time_start},{time_end}]{asr_text}",
-                            "tag": "mask",
-                            "is_asr": True,
-                        }
-                        new_sequence.append(
-                            ("text", text_ele)
-                        )  # convert it into asr text ele
-                        asr_cnt += 1
-
-            # if there is some asr left, take it into account
-            if (
-                self.video_use_asr
-                and "asr" in video_one
-                and asr_cnt < len(video_one["asr"])
-            ):
-                asr = video_one["asr"]
-                while asr_cnt < len(video_one["asr"]):
-                    time_start = round(asr[asr_cnt][1], 1)
-                    time_end = round(asr[asr_cnt][2], 1)
-                    asr_text = asr[asr_cnt][0].strip()
-
-                    text_ele = {
-                        "text": f"[{time_start},{time_end}]{asr_text}",
-                        "tag": "mask",
-                        "is_asr": True,
-                    }
-                    new_sequence.append(
-                        ("text", text_ele)
-                    )  # convert it into asr text ele
-                    asr_cnt += 1
 
         schema = omini_convert_sequence_to_schema(new_sequence)
         return schema
