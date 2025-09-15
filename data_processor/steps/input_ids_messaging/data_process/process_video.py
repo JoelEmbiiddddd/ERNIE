@@ -20,10 +20,12 @@ import copy
 import json
 import math
 import random
+from collections import defaultdict
+from itertools import groupby
 
 from data_processor.steps.input_ids_messaging.data_process.process import Process
 from data_processor.steps.input_ids_messaging.data_utils import get_uniq_id
-from data_processor.utils.io_utils import get_hashable
+from data_processor.utils.io_utils import get_hashable, image_info_2_hash
 from data_processor.utils.logger_utils import logger
 from data_processor.utils.image_enhance import RandomSeedContext
 from data_processor.utils.video_utils import group_frame_by_video
@@ -89,7 +91,31 @@ class VideoProcess(Process):
         sample = self.rearrange_based_on_temp_conv(sample)
 
         """[STEP 3] add special token"""
+        if self.rope_3d:
+            sample = self.split_video(sample)
+
+        # sample = self.concat_adjacent_asr(sample)
+
         sample = self.add_special_tags(sample)
+
+        return sample
+
+    def split_video(self, sample):
+        """dummy"""
+        uid2count = defaultdict(int)
+        for key, group in groupby(
+            sample["image_info"], key=lambda x: x["matched_text_index"]
+        ):
+            group = list(group)
+            uid_tmp = image_info_2_hash(group[0])
+            count = uid2count[uid_tmp]
+            if count == 0:
+                uid = uid_tmp
+            else:
+                uid = f"{uid_tmp}_{count}"
+            uid2count[uid_tmp] += 1
+            for img_one in group:
+                img_one["video_uid"] = uid
 
         return sample
 
