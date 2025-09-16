@@ -151,17 +151,6 @@ class UtteranceProcessor(ProcessorBase):
                     ret["extracted_frame_indices"] = video_one[
                         "extracted_frame_indices"
                     ]
-                if "subtitles_auto" in video_one:
-                    ret["asr"] = video_one["subtitles_auto"]
-                if "subtitles" in video_one:
-                    ret["asr"] = video_one["subtitles"]
-                if "asr" in ret:
-                    for asr_one in ret["asr"]:
-                        assert len(asr_one) == 3
-                        assert isinstance(asr_one[0], str)
-                        assert isinstance(asr_one[1], (float, int))
-                        assert isinstance(asr_one[2], (float, int))
-                        asr_one[1], asr_one[2] = float(asr_one[1]), float(asr_one[2])
 
                 if not self.is_pretraining:
                     text_info = (
@@ -316,17 +305,6 @@ class UtteranceProcessor(ProcessorBase):
                     ret["extracted_frame_indices"] = video_one[
                         "extracted_frame_indices"
                     ]
-                if "subtitles_auto" in video_one:
-                    ret["asr"] = video_one["subtitles_auto"]
-                if "subtitles" in video_one:
-                    ret["asr"] = video_one["subtitles"]
-                if "asr" in ret:
-                    for asr_one in ret["asr"]:
-                        assert len(asr_one) == 3
-                        assert isinstance(asr_one[0], str)
-                        assert isinstance(asr_one[1], (float, int))
-                        assert isinstance(asr_one[2], (float, int))
-                        asr_one[1], asr_one[2] = float(asr_one[1]), float(asr_one[2])
 
                 if not self.is_pretraining:
                     vid_id = len(schema_new["video_info"])
@@ -482,19 +460,6 @@ class UtteranceProcessor(ProcessorBase):
                             video_one["extracted_frame_indices"] = one["video_url"][
                                 "extracted_frame_indices"
                             ]
-                        if "subtitles_auto" in one["video_url"]:
-                            video_one["asr"] = one["video_url"]["subtitles_auto"]
-                        if "subtitles" in one["video_url"]:
-                            video_one["asr"] = one["video_url"]["subtitles"]
-                        if "asr" in video_one:
-                            for asr_one in video_one["asr"]:
-                                assert len(asr_one) == 3
-                                assert isinstance(asr_one[0], str)
-                                assert isinstance(asr_one[1], (float, int))
-                                assert isinstance(asr_one[2], (float, int))
-                                asr_one[1], asr_one[2] = float(asr_one[1]), float(
-                                    asr_one[2]
-                                )
 
                         video_info.append(video_one)
                     elif one["type"] == "text":

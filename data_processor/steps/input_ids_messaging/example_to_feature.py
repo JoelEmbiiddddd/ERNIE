@@ -32,7 +32,7 @@ from data_processor.steps.input_ids_messaging import (
     data_adaptive,
     data_process,
 )
-from data_processor.steps.input_ids_messaging.data_utils import add_prompt, merge_list
+from data_processor.steps.input_ids_messaging.data_utils import merge_list
 from data_processor.utils.constant import (
     CUT_FLAG,
     DATASET_TYPE_TO_DATA_TYPE,
@@ -46,8 +46,6 @@ from data_processor.utils.processor_base import ProcessorBase
 from data_processor.utils.video_utils import group_frame_by_video
 from ernie.tokenizer_vl import (
     NOT_FOUND_TOKEN_ID,
-    SFT_ASR_END_TOKEN,
-    SFT_ASR_START_TOKEN,
     SFT_IMAGE_END_TOKEN,
     SFT_IMAGE_START_TOKEN,
     SFT_VIDEO_END_TOKEN,
@@ -199,8 +197,6 @@ class ExampleToFeature(ProcessorBase):
         self.image_end_token = SFT_IMAGE_END_TOKEN
         self.video_start_token = SFT_VIDEO_START_TOKEN
         self.video_end_token = SFT_VIDEO_END_TOKEN
-        self.asr_start_token = SFT_ASR_START_TOKEN
-        self.asr_end_token = SFT_ASR_END_TOKEN
         self.cls_token_id = self.vocab.get(self.cls_token, self.not_found_token_id)
         self.sep_token_id = self.vocab.get(self.sep_token, self.not_found_token_id)
         self.image_start_id = self.vocab.get(
@@ -215,10 +211,6 @@ class ExampleToFeature(ProcessorBase):
         self.video_end_id = self.vocab.get(
             self.video_end_token, self.not_found_token_id
         )
-        self.asr_start_id = self.vocab.get(
-            self.asr_start_token, self.not_found_token_id
-        )
-        self.asr_end_id = self.vocab.get(self.asr_end_token, self.not_found_token_id)
         self.eos_token_id = self.vocab.get(self.eos_token, self.not_found_token_id)
         # system setting start
         self.bosys_token = self.tokenizer.special_tokens_map.get(
@@ -239,8 +231,6 @@ class ExampleToFeature(ProcessorBase):
         self.token_type_mapping[self.image_end_id] = IDS_TYPE_FLAG["image"]
         self.token_type_mapping[self.video_start_id] = IDS_TYPE_FLAG["image"]
         self.token_type_mapping[self.video_end_id] = IDS_TYPE_FLAG["image"]
-        self.token_type_mapping[self.asr_start_id] = IDS_TYPE_FLAG["image"]
-        self.token_type_mapping[self.asr_end_id] = IDS_TYPE_FLAG["image"]
 
         if self.not_found_token_id in self.token_type_mapping:
             # TODO How to fix unfound special token.
@@ -272,7 +262,6 @@ class ExampleToFeature(ProcessorBase):
             meta (dict): one sample
         """
 
-        prompt = ""
         if "image_info" not in meta or len(meta["image_info"]) == 0:
             dataset_type = "default"
             meta["image_info"] = []
@@ -286,7 +275,7 @@ class ExampleToFeature(ProcessorBase):
 
         for i, sample_info in enumerate(
             self._example_to_feature(
-                deepcopy(meta), prompt, data_type, dataset_type, dataset_name, **kwargs
+                deepcopy(meta), data_type, dataset_type, dataset_name, **kwargs
             )
         ):
             """
@@ -311,11 +300,9 @@ class ExampleToFeature(ProcessorBase):
     def _example_to_feature(
         self,
         meta: dict,
-        prompt: str,
         data_type: str,
         dataset_type: str,
         dataset_name: str,
-        use_prompt: bool = True,
         lazy_image: bool = True,
         max_tile: int = -1,
         max_dec_len: int = 0,
@@ -325,10 +312,8 @@ class ExampleToFeature(ProcessorBase):
 
         Args:
             meta (dict): one sample with schema format
-            prompt (str): one prompt
             dataset_type (str): see DATA_TYPE_TO_DATASET_TYPE
             dataset_name (str): data name
-            use_prompt (bool, optional): use prompt. Defaults to True.
             lazy_image (bool, optional): lazy image. Defaults to True.
 
         Yields:
@@ -378,11 +363,7 @@ class ExampleToFeature(ProcessorBase):
                 rope_3d=self.rope_3d,
             )
 
-            """[STEP 1] add prompt"""
-            if self.is_training:
-                meta = add_prompt(meta, use_prompt, prompt, data_type)
-
-            """[STEP 2] process"""
+            """[STEP 1] process"""
             metas = [meta]
             processor = None
             if dataset_type in DATASET_TYPE_TO_PROCESS_FN:
@@ -411,8 +392,6 @@ class ExampleToFeature(ProcessorBase):
                     dataset_name=dataset_name,
                     data_type=data_type,
                     dataset_type=dataset_type,
-                    use_prompt=use_prompt,
-                    prompt=prompt,
                 )
                 metas = meta if isinstance(meta, list) else [meta]
             if self.is_training and len(metas) == 0:
@@ -424,7 +403,8 @@ class ExampleToFeature(ProcessorBase):
             for idx, meta in enumerate(metas):
                 if not meta:
                     continue
-                """[STEP 3] adaptive"""
+
+                """[STEP 2] adaptive"""
                 meta = adaptiver.process(
                     sample=meta,
                     sample_grouped_info=(
@@ -432,7 +412,7 @@ class ExampleToFeature(ProcessorBase):
                     ),
                 )
 
-                """[STEP 4] text tokenizer & add placeholder"""
+                """[STEP 3] text tokenizer & add placeholder"""
                 meta = self._text_tokenization_add_placeholder(
                     meta,
                     dataset_name,
@@ -441,10 +421,10 @@ class ExampleToFeature(ProcessorBase):
                     add_eos_token=False,
                 )
 
-                """[STEP 5] image_wise type id"""
+                """[STEP 4] image_wise type id"""
                 meta = self._add_image_wise_type_id(meta, data_type)
 
-                """[STEP 6] add mask"""
+                """[STEP 5] add mask"""
                 with SlidingWindowsContextManager(self.tokenizer, self.is_training):
                     for one in self._sliding_window(
                         meta,
