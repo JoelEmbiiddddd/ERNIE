@@ -294,6 +294,8 @@ def run_sft(
             else "convert_from_torch"
         ): False
     }
+    if paddleformers_version >= "0.3":
+        finetuning_args.save_to_hf = False
     model_config = Ernie4_5_MoeConfig.from_pretrained(
         model_args.model_name_or_path,
         dtype=dtype,
