@@ -433,6 +433,7 @@ def run_dpo(
                     "dummy" if model_args.moe_group == "mp" else model_args.moe_group
                 )
         ref_model = model_class.from_config(ref_config, dtype=dtype)
+        # make sure the state_dict is the same to get the same loss for first step
         ref_model.set_state_dict(model.state_dict())
     else:
         ref_model = None
