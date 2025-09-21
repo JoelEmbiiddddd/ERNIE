@@ -82,8 +82,7 @@ def run_server(args: Optional[dict[str, Any]] = None) -> None:
         )
         command = shlex.split(command)
     else:
-        command = (
-            "python -m fastdeploy.entrypoints.openai.api_server "
+        command = ("python -m fastdeploy.entrypoints.openai.api_server "
             f"--model {server_model_path} "
             f"--tensor-parallel-size {finetuning_args.server_tp_degree} "
             f"--host {server_args.host} "
@@ -96,8 +95,14 @@ def run_server(args: Optional[dict[str, Any]] = None) -> None:
             f"--gpu-memory-utilization {server_args.gpu_memory_utilization} "
             f"--block-size {server_args.block_size} "
             f"--kv-cache-ratio {server_args.kv_cache_ratio} "
-            f"--quantization {server_args.quantization} "
-        ).split()
+            f"--quantization {server_args.quantization} ")
+        if server_args.load_choices == "default_v1":
+            command += "--load_choices default_v1 "
+        if server_args.reasoning_parser == "ernie_x1":
+            command += "--reasoning-parser ernie_x1 "
+        if server_args.tool_call_parser == "ernie_x1":
+            command += "--tool-call-parser ernie_x1 "
+        command = command.split()
 
     process = subprocess.Popen(
         command,

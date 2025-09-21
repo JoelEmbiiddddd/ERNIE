@@ -7,9 +7,13 @@ output_dir: None
 # ref: https://github.com/PaddlePaddle/FastDeploy/blob/develop/docs/zh/optimal_deployment/ERNIE-4.5-21B-A3B-Paddle.md
 max_model_len: 131072
 port: 8188
-quantization: wint4
+quantization: wint8
+load_choices: default_v1
+reasoning_parser: ernie_x1
+tool_call_parser: ernie_x1
 
 ### chat
 max_new_tokens: 8192
 top_p: 0.7
 temperature: 0.95
+enable_thinking: true
