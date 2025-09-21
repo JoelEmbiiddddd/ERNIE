@@ -329,6 +329,7 @@ def run_dpo(
                     ".*mlp.down_proj.*",
                 ],
             }
+        finetuning_args.layerwise_lr_decay_bound = 1.0
         model_args.pp_seg_method = "layer:DecoderLayer|EmptyLayer"
         logger.info("loading model from HuggingFace")
 
