@@ -359,6 +359,7 @@ def run_dpo(
             _attn_implementation=_attn_implementation,
             use_filtered_label_loss=model_args.use_sparse_head_and_loss_fn,
             loss_subbatch_sequence_length=1024,
+            attention_dropout_prob=finetuning_args.attention_probs_dropout_prob,
             **convert_from_kwargs,
             **model_kwargs,
         )

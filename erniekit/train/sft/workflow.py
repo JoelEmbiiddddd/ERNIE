@@ -345,6 +345,7 @@ def run_sft(
         model_config = AutoConfig.from_pretrained(
             model_args.model_name_or_path,
             _attn_implementation=_attn_implementation,
+            attention_dropout_prob=finetuning_args.attention_probs_dropout_prob,
             dtype=dtype,
             quantization_config=quantization_config,
             use_fused_head_and_loss_fn=model_args.use_fused_head_and_loss_fn,
