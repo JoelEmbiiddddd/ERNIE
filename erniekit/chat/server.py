@@ -97,6 +97,7 @@ def run_server(args: Optional[dict[str, Any]] = None) -> None:
             f"--block-size {server_args.block_size} "
             f"--kv-cache-ratio {server_args.kv_cache_ratio} "
             f"--quantization {server_args.quantization} "
+            f"--load_choices {server_args.load_choices} "
         ).split()
 
     process = subprocess.Popen(
