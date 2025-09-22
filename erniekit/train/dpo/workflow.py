@@ -311,6 +311,8 @@ def run_dpo(
             else "convert_from_torch"
         ): False
     }
+    if paddleformers_version >= "0.3":
+        finetuning_args.save_to_hf = False
     if model_args.moe_use_aux_free is False:
         model_kwargs.update({"moe_use_aux_free": model_args.moe_use_aux_free})
     config = Ernie4_5_MoeConfig.from_pretrained(**model_kwargs)
