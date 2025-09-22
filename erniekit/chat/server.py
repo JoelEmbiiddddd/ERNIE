@@ -80,6 +80,8 @@ def run_server(args: Optional[dict[str, Any]] = None) -> None:
             f"--enable-chunked-prefill "
             f"--max-num-batched-tokens {server_args.max_num_batched_tokens} "
         )
+        if server_args.load_choices == "default_v1":
+            command += "--load_choices default_v1 "
         command = shlex.split(command)
     else:
         command = (
