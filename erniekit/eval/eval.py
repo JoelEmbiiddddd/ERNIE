@@ -398,7 +398,10 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
             "Quantization is not supported for models with tied lm_head and word_embedding \
             weights when using Pipeline Parallelism (PP)."
         )
-    tokenizer_cls = AutoTokenizer if weight_source['convert_from_hf'] else Ernie4_5_Tokenizer
+
+    tokenizer_cls = (
+        AutoTokenizer if weight_source["convert_from_hf"] else Ernie4_5_Tokenizer
+    )
     tokenizer = tokenizer_cls.from_pretrained(
         model_args.model_name_or_path,
         **convert_from_kwargs,
