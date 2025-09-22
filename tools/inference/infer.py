@@ -24,7 +24,7 @@ import numpy as np
 import paddle
 import paddle.distributed as dist
 from paddle.distributed import fleet
-from paddleformers.transformers import AutoConfig, AutoModelForCausalLM
+from paddleformers.transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from paddleformers.trainer import RuntimeTimer
 from paddleformers.utils.log import logger
 from paddleformers import __version__ as paddleformers_version
@@ -216,7 +216,8 @@ class Predictor:
             ): args.convert_from_hf
         }
         # init model & tokenizer
-        self.tokenizer = Ernie4_5_Tokenizer.from_pretrained(
+        tokenizer_cls = AutoTokenizer if args.convert_from_hf else Ernie4_5_Tokenizer
+        self.tokenizer = tokenizer_cls.from_pretrained(
             args.model_name_or_path, **convert_from_kwargs, **download_source_kwargs
         )
         self.tokenizer.padding_side = "left"

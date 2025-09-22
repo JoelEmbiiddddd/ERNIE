@@ -22,6 +22,7 @@ from typing import Any, Optional
 import paddle
 from paddleformers.transformers import (
     AutoConfig,
+    AutoTokenizer,
     AutoModelForCausalLM,
     AutoModelForCausalLMPipe,
 )
@@ -397,8 +398,8 @@ def run_eval(args: Optional[dict[str, Any]] = None) -> None:
             "Quantization is not supported for models with tied lm_head and word_embedding \
             weights when using Pipeline Parallelism (PP)."
         )
-
-    tokenizer = Ernie4_5_Tokenizer.from_pretrained(
+    tokenizer_cls = AutoTokenizer if weight_source['convert_from_hf'] else Ernie4_5_Tokenizer
+    tokenizer = tokenizer_cls.from_pretrained(
         model_args.model_name_or_path,
         **convert_from_kwargs,
         **download_source_kwargs,
