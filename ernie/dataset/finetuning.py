@@ -190,7 +190,7 @@ def collate_fn(batch: List[List[Sequence]], tokenizer, model_args, max_seq_len: 
 
 def process_fc(data, input_file):
     multi_turns_messages = data["messages"]
-    tools_list = data["tools"]
+    tools_list = data["tools"] if "tools" in data else None
     label = data["label"] if "label" in data else None
 
     system = ""
@@ -557,17 +557,26 @@ class SequenceDataset(IterableDataset):
 
     def function_call_chat_template(self, messages, tools):
         history = messages[:-1]
+        input_dict = dict()
+        input_dict["messages"] = history
+        if tools is not None:
+            input_dict["tools"] = tools
         history_str = self.tokenizer.apply_chat_template(
-            {"messages": history, "tools": tools},
+            input_dict,
             add_generation_prompt=True,
             tokenize=False,
         )
         history_len = len(history_str)
+        input_dict["messages"] = messages
         all_str = self.tokenizer.apply_chat_template(
-            {"messages": messages, "tools": tools},
+            input_dict,
             add_generation_prompt=False,
             tokenize=False,
         )
+        # (21b think model) remove generation content
+        s = "<|im_end|>\n\n<|im_start|>assistant\n<think>\n"
+        if all_str.endswith(s):
+            all_str = all_str[: -len(s)]
         response_str = all_str[history_len:]
         history_id = self.tokenizer.convert_tokens_to_ids(
             self.tokenizer.tokenize(history_str)
