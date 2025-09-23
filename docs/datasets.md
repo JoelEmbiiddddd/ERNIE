@@ -226,6 +226,8 @@ Demo data for thinking models:
 ]
 ```
 
+- Note: The demo datasets provided in `examples/data/sft_think-train.jsonl` and `examples/data/sft_think-eval.jsonl` are derived from the [OpenCodeReasoning dataset](https://huggingface.co/datasets/nvidia/OpenCodeReasoning), published by NVIDIA. This dataset is licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
 Demo data for function call training:
 
 ```json
