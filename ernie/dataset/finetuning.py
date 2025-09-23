@@ -19,6 +19,7 @@ from typing import List
 
 import numpy as np
 from paddle.io import IterableDataset, get_worker_info
+from paddleformers.transformers.tokenizer_utils import PretrainedTokenizer
 from paddleformers.utils.log import logger
 
 from ernie.dataset.base import MultiSourceDataset
@@ -368,11 +369,21 @@ class SequenceDataset(IterableDataset):
         self.begin_of_query = self.tokenizer.tokenize("User: ")
         self.begin_of_response = self.tokenizer.tokenize("\nAssistant: ")
         self.end_of_response = "<|end_of_sentence|>"
-        self.end_of_response_id = self.tokenizer._convert_token_to_id(
-            [self.end_of_response]
-        )[0]
         self.begin_token = "<|begin_of_sentence|>"  # Same effect as sys_start_token
-        self.begin_token_id = self.tokenizer._convert_token_to_id([self.begin_token])[0]
+        if isinstance(self.tokenizer, PretrainedTokenizer):
+            self.end_of_response_id = self.tokenizer._convert_token_to_id(
+                [self.end_of_response]
+            )[0]
+            self.begin_token_id = self.tokenizer._convert_token_to_id(
+                [self.begin_token]
+            )[0]
+        else:
+            self.end_of_response_id = self.tokenizer.convert_tokens_to_ids(
+                [self.end_of_response]
+            )[0]
+            self.begin_token_id = self.tokenizer.convert_tokens_to_ids(
+                [self.begin_token]
+            )[0]
         self.newline_token = self.tokenizer.tokenize(
             "\n"
         )  # Same effect as sys_end_token
