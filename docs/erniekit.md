@@ -7,12 +7,20 @@
 
 ## 📣 Recent updates
 
+**[2025-09] 🔥 Released ERNIEKit v1.3:**
+
+- **New Features**
+    - [ERNIE-4.5-21B-A3B-Thinking] Supports SFT training and function call training for ERNIE-4.5-21B-A3B-Thinking (https://huggingface.co/baidu/ERNIE-4.5-21B-A3B-Thinking).
+
+- **Bug Fixes:**
+    - [VL Model Training] Optimization of multimodal video data processing speed (#1266).
+
 **[2025-09] 🔥 Released ERNIEKit v1.2:**
 
 - **New Features**
-    - WebUI: Added support for training and conversation functionalities with ERNIE 28b/424b VL models.
-    - VL Model Training: Introduced support for query-response format in training data.
-    - Command-Line Tool: Added iluvatar GPU hardware support.
+    - [WebUI] Added support for training and conversation functionalities with ERNIE 28b/424b VL models.
+    - [VL Model Training] Introduced support for query-response format in training data.
+    - [Command-Line Tool] Added iluvatar GPU hardware support.
 
 - **Bug Fixes:**
     - [AutoParallel] Fix use_intermediate_api pp+recompute+moe bug (#1250)
