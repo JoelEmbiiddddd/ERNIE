@@ -711,7 +711,7 @@ def calc_multimodal_logits(
         if config.sequence_parallel:
             last_hidden_state = GatherOp.apply(last_hidden_state)
             last_hidden_state = last_hidden_state.reshape(
-                [-1, config.max_sequence_length, last_hidden_state.shape[-1]]
+                [1, -1, last_hidden_state.shape[-1]]
             )
 
         assert last_hidden_state.shape[:2] == token_type_ids_shifted.shape, (
@@ -874,6 +874,8 @@ class Ernie4_5_VLMoeForConditionalGeneration(Ernie4_5_MoeForCausalLM):
             config=config.vision_config
         )
         self.add_vision_model(vision_model)
+
+        self.tie_weights()  # maybe weight share
 
     def add_vision_model(
         self,
@@ -1254,7 +1256,9 @@ class Ernie4_5_VLMoeForConditionalGeneration(Ernie4_5_MoeForCausalLM):
             ):
                 nonlocal input_ids, token_type_ids_labels, mm_input_ids, image_type_ids
                 """During the backward of this function, the stop_graident attribute of param is reset"""
-                inputs_embeds = self.ernie.embed_tokens(lm_input_ids)
+                inputs_embeds = self.ernie.embed_tokens(lm_input_ids).astype(
+                    self.embed_tokens.weight.dtype
+                )
                 token_type_ids_w_video = token_type_ids[..., :-1].clone()
                 token_type_ids[token_type_ids == TokenType.video] = TokenType.image
                 if images is not None:
