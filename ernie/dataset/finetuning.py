@@ -567,7 +567,7 @@ class SequenceDataset(IterableDataset):
             Sequence: Processed sequence or None if invalid.
         """
         if example.is_function_call:
-            encoded_messages = postprocess_fc_sequence(self.tokenizer, example)
+            encoded_messages = postprocess_fc_sequence(self.tokenizer, example.request)
         else:
             encoded_messages = self.tokenizer.encode_chat_inputs(example.request)
 
