@@ -519,6 +519,7 @@ def run_sft(
     data_collator = partial(
         collate_fn,
         tokenizer=tokenizer,
+        finetuning_args=finetuning_args,
         model_args=model_args,
         max_seq_len=data_args.max_seq_len + model_config.num_nextn_predict_layers,
     )
