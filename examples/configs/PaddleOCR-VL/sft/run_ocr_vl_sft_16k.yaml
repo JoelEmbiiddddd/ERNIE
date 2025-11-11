@@ -14,7 +14,7 @@ sft_image_rescale: True
 image_dtype: "float32"
 
 ### model
-model_name_or_path: baidu/ERNIE-4.5-0.3B-Paddle
+model_name_or_path: PaddlePaddle/PaddleOCR-VL
 fine_tuning: Full
 fuse_rope: True
 use_sparse_head_and_loss_fn: True
@@ -44,9 +44,9 @@ save_total_limit: 5
 save_strategy: steps
 logging_steps: 1
 release_grads: True
-gradient_accumulation_steps: 1
-logging_dir: ./log
-output_dir: ./output
+gradient_accumulation_steps: 8
+logging_dir: ./PaddleOCR-VL-SFT-Bengali/tensorboard_logs/
+output_dir: ./PaddleOCR-VL-SFT-Bengali
 disable_tqdm: True
 
 # train
