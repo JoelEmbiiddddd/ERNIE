@@ -749,19 +749,23 @@ class KnowledgeBasedSFTReader(BaseReader):
                 prefix_token = tokenizer.tokenize(example.prefix)
                 cur_tokens = tokens_src + prefix_token + tokens_target
                 extra_loss_mask = [0] * len(prefix_token)
-            elif "</think>" in tgt.strip() and self.chat_template == "ernie_vl_thinking":
+            elif (
+                "</think>" in tgt.strip() and self.chat_template == "ernie_vl_thinking"
+            ):
                 reasoning_content = (
-                    tgt
-                    .strip()
+                    tgt.strip()
                     .split("</think>")[0]
                     .rstrip("\n")
                     .split("<think>")[-1]
                     .lstrip("\n")
                 )
                 content = tgt.strip().split("</think>")[-1].lstrip("\n")
-                tokens_target = tokenizer.tokenize("\n<think>\n") + tokenizer.tokenize(
-                        reasoning_content.strip("\n")
-                    ) + tokenizer.tokenize("\n</think>\n\n") + tokenizer.tokenize(content)
+                tokens_target = (
+                    tokenizer.tokenize("\n<think>\n")
+                    + tokenizer.tokenize(reasoning_content.strip("\n"))
+                    + tokenizer.tokenize("\n</think>\n\n")
+                    + tokenizer.tokenize(content)
+                )
                 cur_tokens = tokens_src + tokens_target
                 extra_loss_mask = []
             else:
@@ -1079,7 +1083,9 @@ class FunctionCallSFTReader(KnowledgeBasedSFTReader):
                 if reasoning_content:
                     tokens_src = tokens_src + self.begin_of_response
                     if self.chat_template == "ernie_vl_thinking":
-                        tokens_target = tokens_target + tokenizer.tokenize("\n<think>\n")
+                        tokens_target = tokens_target + tokenizer.tokenize(
+                            "\n<think>\n"
+                        )
                     else:
                         tokens_target = tokens_target + tokenizer.tokenize("<think>\n")
                     tokens_target = tokens_target + tokenizer.tokenize(
