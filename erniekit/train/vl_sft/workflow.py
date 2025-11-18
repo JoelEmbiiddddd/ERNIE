@@ -706,6 +706,7 @@ def run_vl_sft(
                 "max_shot": finetuning_args.max_shot,
                 "use_train_part_sharding": finetuning_args.text_use_train_part_sharding,
                 "rope_3d": model_args.rope_3d,
+                "chat_template": preprocess_args.chat_template,
             }
 
             text_sft_train_reader = create_pyreader(config_dataset_text)
