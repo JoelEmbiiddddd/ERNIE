@@ -1094,8 +1094,11 @@ class FunctionCallSFTReader(KnowledgeBasedSFTReader):
                     tokens_target = tokens_target + tokenizer.tokenize("\n</think>\n\n")
                 else:
                     tokens_src = tokens_src + self.begin_of_response
-                    tokens_target = tokens_target + tokenizer.tokenize("\n<think>\n")
-                    tokens_target = tokens_target + tokenizer.tokenize("\n</think>\n\n")
+                    if self.chat_template == "ernie_vl_thinking":
+                        tokens_src = tokens_src + tokenizer.tokenize("\n<think>\n")
+                    else:
+                        tokens_src = tokens_src + tokenizer.tokenize("<think>\n")
+                    tokens_src = tokens_src + tokenizer.tokenize("\n</think>\n\n")
 
                 if len(content) > 0:
                     tokens_target = tokens_target + tokenizer.tokenize(content)
