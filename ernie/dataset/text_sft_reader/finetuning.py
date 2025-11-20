@@ -1155,12 +1155,12 @@ class FunctionCallSFTReader(KnowledgeBasedSFTReader):
 
                 previous_cur_len += len(cur_tokens) + len(break_token_multi_turn)
 
-                if len(tokens) <= 4:
-                    return []
+        if len(tokens) <= 4:
+            return []
 
-                if tokens[0] != self.begin_token:
-                    tokens = [self.begin_token] + tokens
-                    loss_mask = [0] + loss_mask
+        if tokens[0] != self.begin_token:
+            tokens = [self.begin_token] + tokens
+            loss_mask = [0] + loss_mask
 
         assert len(tokens) <= self.max_seq_len, f"{len(tokens)}-{self.max_seq_len}"
         assert (
