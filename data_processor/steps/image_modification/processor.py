@@ -102,6 +102,9 @@ class ImageModificationProcessor(ProcessorBase):
         self.should_shift_by_one = self.is_training and (
             self.is_pretraining or self.sft_shift_by_one
         )
+        self.sft_replace_ids = args.sft_replace_ids
+        self.sft_image_rescale = args.sft_image_rescale
+        self.sft_image_normalize = args.sft_image_normalize
 
     def get_rope_index(
         self,
@@ -437,8 +440,8 @@ class ImageModificationProcessor(ProcessorBase):
                 ret = self.image_preprocess.preprocess(
                     images=imgs,
                     videos=None,
-                    do_normalize=False,
-                    do_rescale=False,
+                    do_normalize=self.sft_image_normalize,
+                    do_rescale=self.sft_image_rescale,
                     predetermined_grid_thw=predetermined_grid_thw,
                     do_convert_rgb=True,
                     input_data_format=ChannelDimension.LAST,
@@ -468,8 +471,8 @@ class ImageModificationProcessor(ProcessorBase):
                             [np.array(img.convert("RGB")) for img in grouped_imgs],
                             axis=0,
                         ),
-                        do_normalize=False,
-                        do_rescale=False,
+                        do_normalize=self.sft_image_normalize,
+                        do_rescale=self.sft_image_rescale,
                         predetermined_grid_thw=cur_predetermined_grid_thw,
                         do_convert_rgb=True,
                         input_data_format=ChannelDimension.LAST,
@@ -523,7 +526,10 @@ class ImageModificationProcessor(ProcessorBase):
                 replace_token_id = self.cls_token_id
                 if self.chat_template == "ernie":
                     replace_token_id = self.cls_token_id
-                elif self.chat_template == "ernie_vl":
+                elif (
+                    self.chat_template == "ernie_vl"
+                    or self.chat_template == "ernie_vl_thinking"
+                ):
                     replace_token_id = self.sep_token_id
                 else:
                     raise NotImplementedError(
@@ -531,6 +537,8 @@ class ImageModificationProcessor(ProcessorBase):
                     )
                 # the label of cls_token is eos_token in sft
                 labels[labels == replace_token_id] = self.eos_token_id
+                if self.sft_replace_ids:
+                    input_ids[input_ids == replace_token_id] = self.eos_token_id
 
             features = OrderedDict(
                 src_id=example.src,
@@ -551,12 +559,7 @@ class ImageModificationProcessor(ProcessorBase):
                 raise e
             if self.variable_resolution:
                 images = np.zeros(
-                    [
-                        4,
-                        3
-                        * (self.image_preprocess.patch_size**2)
-                        * self.image_preprocess.temporal_conv_size,
-                    ],
+                    [4, 3 * (self.image_preprocess.patch_size**2)],
                     dtype=self.image_dtype,
                 )
                 grid_thw = np.array([[1, 2, 2]])

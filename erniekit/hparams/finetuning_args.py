@@ -20,6 +20,8 @@ from paddleformers.trainer import TrainingArguments
 from paddleformers.utils.log import logger
 from paddleformers.trainer.trainer_utils import ShardingOption
 
+from ..utils.process import detect_device
+
 try:
     from paddle.distributed import in_auto_parallel_align_mode
 except Exception:
@@ -184,6 +186,11 @@ class PreTrainingArguments(TrainingArguments):
     disable_pipeline_warmup: bool = field(
         default=False,
         metadata={"help": "whether to disable pipeline warmup"},
+    )
+    packing_size: int = field(default=1, metadata={"help": "Packing size per Squence."})
+    padding: bool = field(
+        default=True,
+        metadata={"help": "Wheather to padd the sequence to the max squence length."},
     )
     global_logging_interval: int = field(
         default=1,
@@ -473,6 +480,12 @@ class FinetuningArguments(
         default=False, metadata={"help": "Whether to use recompute_mtp"}
     )
 
+    # training pytorch models from huggingFace
+    use_huggingface_model: bool = field(
+        default=False,
+        metadata={"help": "Whether to use huggingface model to finetune."},
+    )
+
     def __post_init__(self):
         self.bf16 = True
         if self.compute_type == "bf16":
@@ -502,6 +515,8 @@ class FinetuningArguments(
         self.per_device_eval_batch_size = self.batch_size
         self.server_tp_degree = self.tensor_parallel_degree
 
+        # device
+        self.device = detect_device()
         super().__post_init__()
 
         # ERNIE VL model post init

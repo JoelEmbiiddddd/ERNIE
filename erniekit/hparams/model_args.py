@@ -83,16 +83,16 @@ class ModelArguments:
     use_flash_attn_with_mask: Optional[bool] = field(
         default=True, metadata={"help": "use use_flash_attn_with_mask"}
     )
-    use_attn_mask_start_row_indices: bool = field(
+    use_attn_mask_startend_row_indices: bool = field(
         default=True,
         metadata={
-            "help": "Whether to use attn_mask_start_row_indices in flash attention."
+            "help": "Whether to use attn_mask_startend_row_indices in flash attention."
         },
     )
     use_sparse_flash_attn: bool = field(
         default=True,
         metadata={
-            "help": "Under use attn_mask_start_row_indices=True, whether use sparse flash attention or not."
+            "help": "Under use attn_mask_startend_row_indices=True, whether use sparse flash attention or not."
         },
     )
     use_sparse_head_and_loss_fn: bool = field(
@@ -144,12 +144,12 @@ class ModelArguments:
         metadata={"help": "virtual_pp_degree"},
     )
     pp_seg_method: str = field(
-        default="layer:Ernie4_5_DecoderLayer|ErnieDecoderLayer|EmptyLayer",
+        default="layer:Ernie4_5_DecoderLayer|EmptyLayer",
         metadata={
             "help": (
                 "The method used to segment the pipeline layers among pipeline stages. "
                 "Possible values include `layer:Ernie4_5_DecoderLayer`, "
-                "`layer:Ernie4_5_DecoderLayer|ErnieDecoderLayer|Empty`, `uniform`, `[0, 30, 59]`."
+                "`layer:Ernie4_5_DecoderLayer|Empty`, `uniform`, `[0, 30, 59]`."
             )
         },
     )
@@ -287,9 +287,6 @@ class ModelArguments:
         },
     )
 
-    num_nextn_predict_layers: int = field(
-        default=0, metadata={"help": "Number of nextn predict layers."}
-    )
     # vl model
     vision_config: VisionArguments = field(
         default_factory=VisionArguments, metadata={"help": "Vision configuration"}

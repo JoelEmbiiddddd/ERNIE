@@ -33,6 +33,12 @@ if importlib.util.find_spec("triton") is not None:
         )
 
 import paddle
+from paddleformers.transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    AutoModelForCausalLMPipe,
+)
 from paddleformers.trainer import (
     IntervalStrategy,
     RuntimeTimer,
@@ -41,6 +47,10 @@ from paddleformers.trainer import (
 )
 from paddleformers.trainer.trainer_utils import ShardingOption
 from paddleformers.transformers.model_utils import unwrap_model
+from paddleformers.data.causal_dataset import (
+    build_train_valid_test_datasets,
+    check_data_split,
+)
 from paddleformers.utils.log import logger
 from paddleformers import __version__ as paddleformers_version
 
@@ -56,6 +66,7 @@ from ernie.utils.common_utils import (
     save_stop_info,
 )
 from ernie.utils.download_utils import check_download_repo
+from ernie.utils.load_utils import resolve_weight_source
 
 from ...hparams import (
     DataArguments,
@@ -64,6 +75,62 @@ from ...hparams import (
     ModelArguments,
 )
 from .trainer import ErnieMoETrainer
+
+
+def create_pretrained_dataset(training_args, data_args):
+    assert data_args.input_dir is not None and len(data_args.input_dir.split()) > 1
+
+    check_data_split(
+        data_args.split,
+        training_args.do_train,
+        training_args.do_eval,
+        training_args.do_predict,
+    )
+
+    if training_args.max_steps < 0:
+        raise ValueError(
+            f"max_steps mush be larger than 0 when using pretrain offline dataset, but get {training_args.max_steps}."
+        )
+
+    train_val_test_num_samples = [
+        training_args.per_device_train_batch_size
+        * training_args.dataset_world_size
+        * training_args.max_steps
+        * training_args.gradient_accumulation_steps,
+        training_args.per_device_eval_batch_size
+        * training_args.dataset_world_size
+        * training_args.eval_iters
+        * (training_args.max_steps // training_args.eval_steps + 1),
+        training_args.per_device_eval_batch_size
+        * training_args.dataset_world_size
+        * training_args.test_iters,
+    ]
+
+    train_dataset, valid_dataset, test_dataset = build_train_valid_test_datasets(
+        data_prefix=data_args.input_dir.split(),
+        data_impl="mmap",
+        splits_string=data_args.split,
+        train_val_test_num_samples=train_val_test_num_samples,
+        seq_length=data_args.max_seq_len + training_args.num_nextn_predict_layers,
+        seed=training_args.seed,
+        skip_warmup=True,
+        data_cache_path=None,
+    )
+
+    from paddleformers.data import Stack
+
+    def _collate_data(data, stack_fn=Stack()):
+        tokens_ = stack_fn([x["text"] for x in data])
+
+        labels = tokens_[:, 1:]
+        tokens = tokens_[:, :-1]
+
+        return {
+            "input_ids": tokens,
+            "labels": labels,
+        }
+
+    return train_dataset, valid_dataset, test_dataset, _collate_data
 
 
 def run_sft(
@@ -121,16 +188,6 @@ def run_sft(
         ):
             if finetuning_args.release_grads is True:
                 finetuning_args.release_grads = False
-
-    # checkpoint O1 quantization is open by default.
-    if (
-        not finetuning_args.disable_ckpt_quant
-        and finetuning_args.ckpt_quant_stage == "O0"
-        and not model_args.lora
-    ):
-        finetuning_args.ckpt_quant_stage = "O1"
-    elif finetuning_args.disable_ckpt_quant:
-        finetuning_args.ckpt_quant_stage = "O0"
 
     finetuning_args.print_config(model_args, "Model")
     finetuning_args.print_config(data_args, "Data")
@@ -208,9 +265,6 @@ def run_sft(
         download_hub=model_args.download_hub,
     )
 
-    model_class = Ernie4_5_MoeForCausalLM
-    if finetuning_args.pipeline_parallel_degree > 1:
-        model_class = Ernie4_5_MoeForCausalLMPipe
     if (
         model_args.moe_group.lower() in {"data", "dp"}
         and finetuning_args.data_parallel_degree > 1
@@ -287,20 +341,82 @@ def run_sft(
     else:
         download_source_kwargs["download_hub"] = model_args.download_hub
 
+    weight_source = resolve_weight_source(
+        model_args.model_name_or_path,
+        download_source_kwargs=download_source_kwargs,
+    )
+    if weight_source["convert_from_hf"]:
+        finetuning_args.use_huggingface_model = True
+        finetuning_args.convert_from_hf = True
+        if finetuning_args.weight_quantize_algo is not None:
+            if finetuning_args.weight_quantize_algo == "weight_only_mix":
+                quantization_config["weight_quantize_algo"] = {
+                    "weight_only_int4": [".*mlp.experts.*"],
+                    "weight_only_int8": [
+                        ".*self_attn.q_proj.*",
+                        ".*self_attn.k_proj.*",
+                        ".*self_attn.v_proj.*",
+                        ".*self_attn.o_proj.*",
+                        ".*mlp.up_proj.*",
+                        ".*mlp.gate_proj.*",
+                        ".*mlp.down_proj.*",
+                    ],
+                }
+        model_args.pp_seg_method = "layer:DecoderLayer|EmptyLayer"
+        logger.info("loading model from HuggingFace")
+
+    if finetuning_args.use_huggingface_model:
+        model_class = AutoModelForCausalLM
+        if finetuning_args.pipeline_parallel_degree > 1:
+            model_class = AutoModelForCausalLMPipe
+    else:
+        model_class = Ernie4_5_MoeForCausalLM
+        if finetuning_args.pipeline_parallel_degree > 1:
+            model_class = Ernie4_5_MoeForCausalLMPipe
+
     convert_from_kwargs = {
         (
             "convert_from_hf"
             if paddleformers_version >= "0.3"
             else "convert_from_torch"
-        ): False
+        ): weight_source["convert_from_hf"]
     }
-    model_config = Ernie4_5_MoeConfig.from_pretrained(
-        model_args.model_name_or_path,
-        dtype=dtype,
-        quantization_config=quantization_config,
-        **convert_from_kwargs,
-        **download_source_kwargs,
-    )
+    if paddleformers_version >= "0.3":
+        finetuning_args.save_to_hf = (
+            weight_source["save_to_hf"] and finetuning_args.use_huggingface_model
+        )
+
+    if finetuning_args.use_huggingface_model:
+        if (
+            model_args.use_attn_mask_startend_row_indices
+            and model_args.use_sparse_flash_attn
+        ):
+            _attn_implementation = "flashmask"
+        else:
+            _attn_implementation = "sdpa"
+        model_config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            _attn_implementation=_attn_implementation,
+            attention_dropout_prob=finetuning_args.attention_probs_dropout_prob,
+            dtype=dtype,
+            quantization_config=quantization_config,
+            use_fused_head_and_loss_fn=model_args.use_fused_head_and_loss_fn,
+            use_filtered_label_loss=model_args.use_sparse_head_and_loss_fn,
+            loss_subbatch_sequence_length=32768,
+            num_nextn_predict_layers=finetuning_args.num_nextn_predict_layers,
+            **convert_from_kwargs,
+            **download_source_kwargs,
+        )
+        model_config.use_fused_head_and_loss_fn = model_args.use_fused_head_and_loss_fn
+    else:
+        model_config = Ernie4_5_MoeConfig.from_pretrained(
+            model_args.model_name_or_path,
+            dtype=dtype,
+            quantization_config=quantization_config,
+            **convert_from_kwargs,
+            **download_source_kwargs,
+        )
+
     model_config.tensor_parallel_degree = finetuning_args.tensor_parallel_degree
     model_config.tensor_parallel_rank = finetuning_args.tensor_parallel_rank
     model_config.recompute = finetuning_args.recompute
@@ -335,7 +451,7 @@ def run_sft(
     model_config.moe_multimodal_dispatch_use_allgather = (
         model_args.moe_multimodal_dispatch_use_allgather
     )
-    model_config.num_nextn_predict_layers = model_args.num_nextn_predict_layers
+    model_config.num_nextn_predict_layers = finetuning_args.num_nextn_predict_layers
     model_config.hidden_dropout_prob = finetuning_args.hidden_dropout_prob
     model_config.attention_probs_dropout_prob = (
         finetuning_args.attention_probs_dropout_prob
@@ -343,9 +459,15 @@ def run_sft(
     model_config.num_acc_steps = finetuning_args.gradient_accumulation_steps
     model_config.multi_token_pred_lambda = finetuning_args.multi_token_pred_lambda
     model_config.use_recompute_mtp = finetuning_args.use_recompute_mtp
+    model_config.per_device_train_batch_size = (
+        finetuning_args.per_device_train_batch_size
+    )
     if model_args.moe_use_aux_free is False:
         model_config.moe_use_aux_free = model_args.moe_use_aux_free
-    if model_config.moe_num_experts is None or model_config.moe_num_experts == 0:
+    if (
+        model_config.get("moe_num_experts", None) is None
+        or model_config.get("moe_num_experts", 0) == 0
+    ):
         model_config.moe_group = (
             "dummy" if model_args.moe_group == "mp" else model_args.moe_group
         )
@@ -358,6 +480,15 @@ def run_sft(
         raise NotImplementedError(
             "Quantization is not supported for models with tied lm_head and word_embedding \
             weights when using Pipeline Parallelism (PP)."
+        )
+
+    # (NOTE): ERNIEKit currently only support finetuning ernie4_5 and ernie4_5_moe models from huggingface
+    if finetuning_args.use_huggingface_model and model_config.model_type not in (
+        "ernie4_5",
+        "ernie4_5_moe",
+    ):
+        raise ValueError(
+            f"Currently, only support ernie4_5 and ernie4_5_moe for HuggingFace model, but got {model_config.model_type}."
         )
 
     if model_args.continue_training or finetuning_args.weight_quantize_algo is not None:
@@ -377,7 +508,10 @@ def run_sft(
     logger.info("Loading model successfully !")
     logger.debug(f"Model config: {model.config}")
     logger.info(f"{runtime_timer.log()}")
-    tokenizer = Ernie4_5_Tokenizer.from_pretrained(
+    tokenizer_cls = (
+        AutoTokenizer if weight_source["convert_from_hf"] else Ernie4_5_Tokenizer
+    )
+    tokenizer = tokenizer_cls.from_pretrained(
         model_args.model_name_or_path,
         **convert_from_kwargs,
         **download_source_kwargs,
@@ -390,13 +524,20 @@ def run_sft(
         "random_seed": finetuning_args.seed,
         "num_replicas": finetuning_args.dataset_world_size,
         "rank": finetuning_args.dataset_rank,
+        "packing": data_args.packing,
+        "mix_strategy": data_args.mix_strategy,
+        "encode_one_turn": data_args.encode_one_turn,
+        "use_template": data_args.use_template,
+        "is_pretraining": True if model_args.stage.lower() == "pt" else False,
     }
-    from ernie.dataset.finetuning import collate_fn
+    from paddleformers.datasets.finetuning import collate_fn
 
     if data_args.dataset_type == "map":
-        from ernie.dataset.finetuning import create_indexed_dataset as create_dataset
+        from paddleformers.datasets.finetuning import (
+            create_indexed_dataset as create_dataset,
+        )
     else:
-        from ernie.dataset.finetuning import create_dataset
+        from paddleformers.datasets.finetuning import create_dataset
     dataset_config.update(
         {
             "num_samples_each_epoch": data_args.num_samples_each_epoch,
@@ -406,38 +547,53 @@ def run_sft(
     )
 
     if finetuning_args.should_load_dataset:
-        if data_args.dataset_type == "map":
-            train_file_path = os.path.join(data_args.offline_dataset_path, "train")
-            train_dataset = create_dataset(data_file_prefix=train_file_path)
-        else:
-            train_dataset = create_dataset(
-                task_group=data_args.train_dataset_path,
-                task_group_prob=data_args.train_dataset_prob,
-                sub_dataset_type=data_args.train_dataset_type,
-                **dataset_config,
+        if data_args.dataset_type == "pretrain":
+            finetuning_args.test_iters = finetuning_args.eval_iters * 10
+            train_dataset, eval_dataset, test_dataset, data_collator = (
+                create_pretrained_dataset(finetuning_args, data_args)
             )
+        else:
+            if data_args.dataset_type == "map":
+                train_file_path = os.path.join(data_args.offline_dataset_path, "train")
+                train_dataset = create_dataset(data_file_prefix=train_file_path)
+            else:
+                train_dataset = create_dataset(
+                    task_group=data_args.train_dataset_path,
+                    task_group_prob=data_args.train_dataset_prob,
+                    sub_dataset_type=data_args.train_dataset_type,
+                    **dataset_config,
+                )
 
     if finetuning_args.do_eval and finetuning_args.should_load_dataset:
-        if data_args.dataset_type == "map":
-            eval_file_path = os.path.join(data_args.offline_dataset_path, "eval")
-            eval_dataset = create_dataset(data_file_prefix=eval_file_path)
-        else:
-            eval_dataset = create_dataset(
-                task_group=data_args.eval_dataset_path,
-                task_group_prob=data_args.eval_dataset_prob,
-                sub_dataset_type=data_args.eval_dataset_type,
-                is_valid=True,
-                **dataset_config,
-            )
+        if data_args.dataset_type != "pretrain":
+            if data_args.dataset_type == "map":
+                eval_file_path = os.path.join(data_args.offline_dataset_path, "eval")
+                eval_dataset = create_dataset(data_file_prefix=eval_file_path)
+            else:
+                eval_dataset = create_dataset(
+                    task_group=data_args.eval_dataset_path,
+                    task_group_prob=data_args.eval_dataset_prob,
+                    sub_dataset_type=data_args.eval_dataset_type,
+                    is_valid=True,
+                    **dataset_config,
+                )
 
     logger.info("Creating dataset successfully ...")
 
-    data_collator = partial(
-        collate_fn,
-        tokenizer=tokenizer,
-        model_args=model_args,
-        max_seq_len=data_args.max_seq_len + model_config.num_nextn_predict_layers,
+    # padding to the maximum seq length in batch data when max_seq_len is None
+    max_seq_len = (
+        data_args.max_seq_len + model_config.num_nextn_predict_layers
+        if (data_args.packing or finetuning_args.sequence_parallel)
+        else None
     )
+    if data_args.dataset_type != "pretrain":
+        data_collator = partial(
+            collate_fn,
+            tokenizer=tokenizer,
+            training_args=finetuning_args,
+            model_args=model_args,
+            max_seq_len=max_seq_len,
+        )
 
     if model_args.lora:
         from ernie.utils.peft_utils import initialize_lora_model
@@ -451,8 +607,13 @@ def run_sft(
         )
 
     if finetuning_args.max_steps == -1:
+        if data_args.mix_strategy == "random":
+            raise ValueError(
+                "When using 'random' mix_strategy, max_steps must be explicitly set (cannot be -1). "
+                "Random mixing requires a fixed number of training steps to properly sample data."
+            )
         if finetuning_args.should_load_dataset and paddle.distributed.get_rank() == 0:
-            if data_args.dataset_type != "map":
+            if data_args.dataset_type != "map" and data_args.dataset_type != "pretrain":
                 finetuning_args.max_steps = estimate_training(
                     train_dataset, data_args, finetuning_args, model_args
                 )

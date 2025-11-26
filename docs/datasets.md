@@ -1,3 +1,28 @@
+# ERNIEKit Data Packing Strategy
+
+`Packing` is a technique used to optimize batch processing by combining multiple short input sequences into a single longer sequence before feeding them into the LLM. This reduces padding overhead and improves hardware utilization (e.g., GPU/TPU efficiency).
+
+`The greedy intokens strategy` is a token-level optimization that prioritizes filling the available token budget (e.g., max sequence length) in a greedy manner during batch processing. It ensures that the model generates as many tokens as possible within the constraints, minimizing wasted capacity.
+
+| packing      | greedy_intokens | Packing Strategy |
+|--------------|-----------------|------------------|
+| false | any   | No packing  |
+| true  | false | packing is enabled without greedy intokens strategy |
+| true  | true  | greedy intokens packing is enabled |
+
+# ERNIEKit Data Sampling Strategy
+
+Currently, four data sampling strategies are supported: `random`, `concat`, `interleave_under`, `interleave_over`
+
+| Data Sampling Strategy | Applicable Scenarios	| Limitations | Description |
+|------------------|-----------------|------------------|------------------|
+| `random`           | The dataset is extremely large and strict data proportioning is required | max_steps > 0 | In `random` mode, based on the input dataset probs, a fixed-size sample pool of `num_samples_each_epoch` is constructed, and the data loader randomly acquires data from this sample pool. |
+| `concat`           | Need to train all data in the datasets | None | In `concat` mode, the input dataset probs are not used. Instead, multiple datasets are directly concatenated. The size of the dataset is equal to the total size of the input multi-source datasets. When max_steps = -1, setting `num_train_epochs` allows for a complete traversal of the input datasets for `num_train_epochs` rounds. |
+| `interleave_under` | When small datasets are important but have limited samples | None | The `interleave` strategy involves cross-concatenating multiple datasets according to data proportioning. `interleave_under` indicates undersampling, meaning that sampling stops as soon as one of the datasets is exhausted. |
+| `interleave_over`  | When small datasets are important but have limited samples | None | The `interleave` strategy involves cross-concatenating multiple datasets according to data proportioning. `interleave_over` indicates oversampling, meaning that sampling stops only after all datasets have been exhausted. |
+
+- Note: `num_samples_each_epoch` only works in `random` data sampling strategy.
+
 # ERNIEKit Data Format Specification
 
 ERNIEKit currently supports reading local datasets and downloading specified Hugging Face datasets in two formats: erniekit and alpaca.
@@ -5,9 +30,9 @@ ERNIEKit currently supports reading local datasets and downloading specified Hug
 ## Local Datasets
 
 - **CLI**: Modify the following fields in the YAML config file:
-  - Set `train_dataset_path`/`eval_dataset_path` to the absolute or relative path of your local dataset file
-  - Set `train_dataset_type`/`eval_dataset_type` to the dataset format (erniekit/alpaca)
-  - Set `train_dataset_prob`/`eval_dataset_prob` for multi-source dataset mixing probabilities
+  - Set `train_dataset_path` / `eval_dataset_path` to the absolute or relative path of your local dataset file
+  - Set `train_dataset_type` / `eval_dataset_type` to the dataset format (erniekit/alpaca)
+  - Set `train_dataset_prob` / `eval_dataset_prob` for multi-source dataset mixing probabilities
 ```yaml
 # single-source
 train_dataset_type: "erniekit"
@@ -27,9 +52,9 @@ train_dataset_prob: "0.8,0.2"
 ## Hugging Face Datasets
 
 - **CLI**: Modify the following fields in the YAML config file:
-  - Set `train_dataset_path`/`eval_dataset_path` to the Hugging Face repo ID
-  - Set `train_dataset_type`/`eval_dataset_type` to alpaca
-  - Set `train_dataset_prob`/`eval_dataset_prob` for multi-source dataset mixing probabilities
+  - Set `train_dataset_path` / `eval_dataset_path` to the Hugging Face repo ID
+  - Set `train_dataset_type` / `eval_dataset_type` to alpaca
+  - Set `train_dataset_prob` / `eval_dataset_prob` for multi-source dataset mixing probabilities
 ```yaml
 # single-source
 train_dataset_type: "alpaca"
@@ -45,7 +70,7 @@ train_dataset_prob: "0.8,0.2"
   - Under `Set Built-in Dataset`, select the dataset name in `Dataset Selection`
   - The system will automatically configure the path and type, then download and read from Hugging Face
 
-Supported Hugging Face datasets are defined in `ernie.dataset.hf.data_info.json`:
+Supported Hugging Face datasets are defined:
 
 ### Supported Hugging Face Datasets
 | Dataset Name | Type |Format | File | File Format |
@@ -78,6 +103,13 @@ Supported Hugging Face datasets are defined in `ernie.dataset.hf.data_info.json`
 | [mayflowergmbh/airoboros-3.0_de](https://huggingface.co/datasets/mayflowergmbh/airoboros-3.0_de) | sft | alpaca | airoboros_3.json | json |
 | [mayflowergmbh/ultra-chat_de](https://huggingface.co/datasets/mayflowergmbh/ultra-chat_de) | sft | alpaca | ultra_chat_german.json | json |
 | [Intel/orca_dpo_pairs](https://huggingface.co/datasets/Intel/orca_dpo_pairs) | dpo | alpaca | orca_rlhf.jsonl | jsonl |
+| [shibing624/sharegpt_gpt4](https://huggingface.co/datasets/shibing624/sharegpt_gpt4) | sft | sharegpt | sharegpt_gpt4.jsonl | jsonl |
+| [llamafactory/lima](https://huggingface.co/datasets/llamafactory/lima) | sft | sharegpt | lima.json | json |
+| [Open-Orca/SlimOrca](https://huggingface.co/datasets/Open-Orca/SlimOrca) | sft | sharegpt | oo-labeled_correct.gpt4.sharegpt.jsonl | jsonl |
+| [totally-not-an-llm/sharegpt-hyperfiltered-3k](https://huggingface.co/datasets/totally-not-an-llm/sharegpt-hyperfiltered-3k) | sft | sharegpt | sharegptclean_final.json | json |
+| [m-a-p/neo_sft_phase2](https://huggingface.co/datasets/m-a-p/neo_sft_phase2) | sft | sharegpt | neo_sft_phase2.json | json |
+| [llamafactory/DPO-En-Zh-20k](https://huggingface.co/datasets/llamafactory/DPO-En-Zh-20k) | sft | sharegpt | dpo_zh.json | json |
+| [avemio/German-RAG-DPO-ShareGPT-HESSIAN-AI](https://huggingface.co/datasets/avemio/German-RAG-DPO-ShareGPT-HESSIAN-AI) | dpo | sharegpt | qa-with-multiple-references/DPO_equally-distributed-wikipedia-trainingdata-qa-with-multiple-references_id-over-800k-under-1000k_sharegpt.jsonl | jsonl |
 
 ## erniekit Data Format
 
@@ -214,27 +246,124 @@ Here is a system configuration example of SFT VL dataset:
 }
 ```
 
+#### SFT VL Dataset For function call
+
+Required fields for SFT VL Function Call:
+
+* `text_info`: The list of text data, each element contains a `text`, `tag`, and `tool_response`
+  * `text`: The text content from User question or System response
+  * `tag`: The mask tag (`no_mask`=include in training, `mask`=exclude)
+  * `tool_response`: `true`=role is tool, `fasle`=role is user, only valid when `tag` is `mask`
+  * `tool_calls`: The tool calls information
+* `image_info`: The list of image data, each element contains a `image_url` and a `matched_text_index`
+  * `image_url`: The url to download image online or the path to access image locally
+  * `matched_text_index`: The index of matched text in `text_info`
+    * Default: `matched_text_index=0` means the image is matched with the first text, and will be palced before the first text
+* `is_system(optional)`: The system flag (1=system configuration, 0=no system configuration)
+  * system configuration = `text_info[0]` if `is_system=1`
+* `tools`: The tools information
+
+Notes:
+* Each training sample is in JSON format, with multiple samples separated by newlines
+* Video data is supported by replacing the `image_info` with `video_info`
+  * the `image_url` can be a video url or video path
+* Please ensure that `mask` items and `no_mask` items alternate in the `text_info`
+
+Here is a multi-image example of SFT VL dataset:
+```json
+{
+    "image_info": [
+        {"matched_text_index": 0, "image_url": "000000213579.jpg"},
+        {"matched_text_index": 2, "image_url": "000000213579_0_493_518_786.jpg"},
+        {"matched_text_index": 4, "image_url": "000000213579_468_391_670_575.jpg"},
+    ],
+    "text_info": [
+        {"text": "Is the fork on the left side of the cup?", "tag": "mask", "tool_response": false},
+        {"text": "\n<think>\nI need to check the relative positions of the fork and the cup in the image. I'll first locate both objects and then determine if the fork is on the left side of the cup.\n\nI will zoom in on the plate with the cake and the fork to get a better view of their position.\n</think>\n\n", "tool_calls": [{"name": "image_zoom_in_tool", "arguments": "{\"bbox_2d\": [0, 493, 518, 786]}"}], "tag": "no_mask"},
+        {"text": "", "tag": "mask", "tool_response": true},
+        {"text": "\n<think>\nOkay, now I see the fork clearly. It's positioned on the left side of the plate, next to a slice of cake. The plate itself is very colorful with sections of green, red, blue, and yellow. Now that I have confirmed the location of the fork, I need to find the cup to determine their relative positions. I will now zoom in on the person holding the cup to get a better look.\n</think>\n\n", "tool_calls": [{"name": "image_zoom_in_tool", "arguments": "{\"bbox_2d\": [468, 391, 670, 575]}"}], "tag": "no_mask"}, 
+        {"text": "", "tag": "mask", "tool_response": true},
+        {"text": "\n<think>\nBased on the visual analysis of the image, I can determine the relative positions of the fork and the cup.\n\n- The fork is located on a colorful plate, positioned to the left of a slice of cake.\n- The cup, which has a blue design with a cartoon character, is being held by a person.\n- When viewing the overall scene, the plate with the fork is situated to the left of the person holding the cup.\n\nTherefore, yes, the fork is on the left side of the cup.\n</think>\n\nYes, the fork is on the left side of the cup.", "tool_calls": [], "tag": "no_mask"}
+    ],
+    "tools": [
+        {
+            "type": "function",
+            "function": {
+                "name": "image_zoom_in_tool",
+                "description": "Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "bbox_2d": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                            "description": "The bounding box of the region to zoom in, as [x1, y1, x2, y2], where (x1, y1) is the top-left corner and (x2, y2) is the bottom-right corner, and the values of x1, y1, x2, y2 are all normalized to the range 0–1000 based on the original image dimensions."
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": "The name or label of the object in the specified bounding box (optional)."
+                        }
+                    },
+                    "required": ["bbox_2d"]
+                },
+                "strict": false
+            }
+        }
+    ]
+}
+```
+
+## chatml Format
+
+The chatml Format is used for training thinking models and function call training:
+
+Demo data for thinking models:
+
+```json
+[
+    {"messages": [{"role": "system", "content": "You are a good coder."}, {"role": "user", "content": "Given an integer array nums and an integer target value target, find two integers in the array whose sum equals the target value target, and return their array indices. You may assume that each input will have exactly one solution, and you may not use the same element twice. You can return the answer in any order. Example 1: Input: nums = [2,7,11,15], target = 9\nOutput: [0,1]\nExplanation: Because nums[0] + nums[1] == 9, return [0, 1]."}, {"role": "assistant", "content": "<think>We are going to use a hash map (dictionary) to store the numbers we have seen so far along with their indices.\n For each number in the array, we calculate the complement (target - current number).\n If the complement exists in the hash map, that means we have found the two numbers that add up to the target.\n We then return the current index and the index of the complement from the hash map.\n Since we are guaranteed exactly one solution, we can return immediately when we find it.\n</think>\nTo solve this problem efficiently, we can use a hash map to store each number's index as we iterate through the array. For each number, we calculate its complement (target minus the current number). If the complement exists in the hash map, we immediately return the current index and the complement's index. This approach ensures we find the solution in linear time.\n\n### Approach\n1. **Initialization**: Create an empty dictionary to store numbers and their indices.\n2. **Iterate through the array**: For each number in the array:\n   - Calculate the complement (target - current number).\n   - Check if the complement exists in the dictionary.\n   - If found, return the current index and the complement's index.\n   - Otherwise, add the current number and its index to the dictionary.\n3. **Result**: Since the problem guarantees exactly one solution, we will always find it during iteration.\n\n### Solution Code\n```python\ndef twoSum(nums, target):\n    num_map = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in num_map:\n            return [num_map[complement], i]\n        num_map[num] = i\n```\n\n### Explanation\n- **Initialization**: The dictionary `num_map` will track each number encountered and its index.\n- **Iteration**: For each number `num` at index `i`:\n  - Compute `complement = target - num`.\n  - If `complement` is in `num_map`, return `[num_map[complement], i]` since these two numbers sum to the target.\n  - Otherwise, store `num` with its index in `num_map` for future checks.\n- **Efficiency**: This approach runs in O(n) time, where n is the number of elements, as each dictionary operation (insertion and lookup) is O(1) on average. The space complexity is O(n) to store the dictionary.\n"}]}
+]
+```
+
+- Note: The demo datasets provided in `examples/data/sft_think-train.jsonl` and `examples/data/sft_think-eval.jsonl` are derived from the [OpenCodeReasoning dataset](https://huggingface.co/datasets/nvidia/OpenCodeReasoning), published by NVIDIA. This dataset is licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+Demo data for function call training:
+
+```json
+[
+    {"messages": [{"role": "user", "content": "I'm feeling a bit down. Can you tell me a joke to cheer me up?"}, {"role": "assistant", "content": "<think>Okay, let me try to figure out how to approach this. The user is feeling down and asks for a joke to cheer up. I need to connect this request to the appropriate function call. Looking at the available tools, there's a function called get_random_joke which is designed exactly for this purpose. Since the user's main need is to feel better, providing a joke makes sense. The function doesn't require any parameters, so it's straightforward to call it without any additional arguments.\n</think>", "tool_calls": [{"type": "function", "function": {"name": "get_random_joke", "arguments": {}}}]}, {"role": "tool", "content": [{"joke": "Why don't scientists trust atoms? Because they make up everything!"}]}, {"role": "assistant", "content": "Sure, here's a joke for you: \"Why don't scientists trust atoms? Because they make up everything!\" I hope that brings a smile to your face."}], "tools": [{"type": "function", "function": {"name": "get_random_joke", "description": "Get a random joke", "parameters": {"type": "object", "properties": {}, "required": []}}}, {"type": "function", "function": {"name": "generate_random_number", "description": "Generate a random number within a specified range", "parameters": {"type": "object", "properties": {"min": {"type": "number", "description": "The minimum value of the range"}, "max": {"type": "number", "description": "The maximum value of the range"}}, "required": ["min", "max"]}}}]}
+]
+```
+
 
 ## alpaca Format
 
 ### SFT Dataset
 
-Supports json and jsonl file formats:
+**Required fields for SFT**
+
+* `instruction`: A clear task directive (e.g., "Translate the following Chinese text to English").
+* `input`: Task-specific input content (may be empty for tasks like "Write a poem").
+* `output`: The expected model response.
+
+**Supports json and jsonl file formats**
 
 * **json**: Each line contains one JSON object:
-```json
-{"instruction":"instructionA", "input":"inputA", "output":"outputA"}
-{"instruction":"instructionB", "input":"inputB", "output":"outputB"}
-{"instruction":"instructionC", "input":"inputC", "output":"outputC"}
-```
-
-* **jsonl**: All data in a single JSON array:
 ```json
 [
     {"instruction":"instructionA", "input":"inputA", "output":"outputA"},
     {"instruction":"instructionB", "input":"inputB", "output":"outputB"},
     {"instruction":"instructionC", "input":"inputC", "output":"outputC"}
 ]
+```
+
+* **jsonl**: All data in a single JSON array:
+```json
+{"instruction":"instructionA", "input":"inputA", "output":"outputA"}
+{"instruction":"instructionB", "input":"inputB", "output":"outputB"}
+{"instruction":"instructionC", "input":"inputC", "output":"outputC"}
 ```
 
 **Field Mapping Between alpaca and erniekit**
@@ -248,4 +377,27 @@ Supports json and jsonl file formats:
 
 ### DPO Dataset
 
-(Coming soon)
+**Required fields for DPO**
+
+* `system(optional)`: System configuration
+* `question`: User question.
+* `chosen`: The higher-quality output selected by human annotators.
+* `rejected`: The lower-quality output for the same question.
+
+**Supports json and jsonl file formats**
+
+* **json**: Each line contains one JSON object:
+```json
+[
+    {"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"},
+    {"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"},
+    {"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"}
+]
+```
+
+* **jsonl**: All data in a single JSON array:
+```json
+{"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"}
+{"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"}
+{"system": "你是一个AI小助理", "question": "哪一个富含蛋白质，床还是墙？", "chosen": "床和墙都不是蛋白质的来源，因为它们都是无生命的物体。蛋白质通常存在于肉类、奶制品、豆类和坚果等食物中。", "rejected": "对不起，我无法回答那个问题。请提供更具体的信息，让我知道你需要什么帮助。"}
+```

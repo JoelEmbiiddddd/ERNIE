@@ -510,7 +510,9 @@ def shard_data_in_pp_group(
         if not input_is_parallel:
             if dp_src_rank == this_rank:
                 assert images.ndim == 4, images.shape
-                full_image_shape = paddle.shape(images).cuda().astype("int32")
+                full_image_shape = (
+                    paddle.shape(images).to(paddle.device.get_device()).astype("int32")
+                )
             else:
                 full_image_shape = paddle.empty([4], dtype="int32")
             dist.broadcast(full_image_shape, dp_src_rank, group=dp_group)
@@ -721,7 +723,7 @@ def modality_detach(wrapped_class):
     return wrapped_class
 
 
-def inbatch_pack_offset_to_attn_mask_start_row_indices(inbatch_pack_offset):
+def inbatch_pack_offset_to_attn_mask_startend_row_indices(inbatch_pack_offset):
     inbatch_pack_offset = inbatch_pack_offset.numpy()
     attn_mask_row_start_indices = []
     min_start_row = np.inf
@@ -1015,11 +1017,13 @@ class ErnieDecoderLayerPipe(ErnieMoEDecoderLayer):
 
         token_type_ids = token_type_ids.clone()
         if inbatch_pack_offset is not None:
-            attn_mask_start_row_indices = (
-                inbatch_pack_offset_to_attn_mask_start_row_indices(inbatch_pack_offset)
+            attn_mask_startend_row_indices = (
+                inbatch_pack_offset_to_attn_mask_startend_row_indices(
+                    inbatch_pack_offset
+                )
             )
         else:
-            attn_mask_start_row_indices = None
+            attn_mask_startend_row_indices = None
 
         has_gradient = not hidden_states.stop_gradient
         if (
@@ -1048,7 +1052,7 @@ class ErnieDecoderLayerPipe(ErnieMoEDecoderLayer):
                 super().forward,
                 hidden_states,
                 None,  # attention_mask,
-                attn_mask_start_row_indices,  # attn_mask_start_row_indices
+                attn_mask_startend_row_indices,  # attn_mask_startend_row_indices
                 position_ids,  # position_ids,
                 token_type_ids.clone(),  # token-type
                 False,  # output-attention
@@ -1060,7 +1064,7 @@ class ErnieDecoderLayerPipe(ErnieMoEDecoderLayer):
             hidden_states = super().forward(
                 hidden_states,
                 None,  # attention_mask,
-                attn_mask_start_row_indices,  # attn_mask_start_row_indices
+                attn_mask_startend_row_indices,  # attn_mask_startend_row_indices
                 position_ids,  # position_ids,
                 token_type_ids.clone(),  # token-type
                 False,  # output-attention
@@ -1124,6 +1128,7 @@ def multimodal_data_provider(
     pp_stage_id = hcg.get_stage_id()
     is_first_stage = pp_stage_id == 0
     is_last_stage = pp_stage_id == pp_stages - 1
+    device = paddle.get_device()
 
     def check_len(list_of_ten, is_input, num_sample_per_pp_data=1):
         if not image_fea_concated and is_input:
@@ -1180,8 +1185,8 @@ def multimodal_data_provider(
             if start == end:
                 return None
             if image_fea_concated:
-                return x.slice((0,), start, end).clone().cuda()
-            return x.cuda()._slice(start, end)
+                return x.slice((0,), start, end).clone().to(device)
+            return x.to(device)._slice(start, end)
 
         if image_fea_concated:
             split_offset = [
@@ -1636,7 +1641,11 @@ class Ernie4_5_VLMoeForConditionalGenerationPipe(
                     this_rank = dist.get_rank()
                     if src_rank == this_rank:
                         assert images.ndim == 4, images.shape
-                        full_image_shape = paddle.shape(images).cuda().astype("int32")
+                        full_image_shape = (
+                            paddle.shape(images)
+                            .to(paddle.device.get_device())
+                            .astype("int32")
+                        )
                     else:
                         full_image_shape = paddle.empty([4], dtype="int32")
                     dist.broadcast(full_image_shape, src_rank, group=pp_sd_group)

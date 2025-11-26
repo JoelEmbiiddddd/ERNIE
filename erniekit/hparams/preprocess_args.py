@@ -61,7 +61,6 @@ class CoarseProcessorArguments(BasePreprocessArguments):
     video_frames_sample: str = field(
         default="middle", metadata={"help": " middle, rand, leading"}
     )
-    video_use_asr: bool = field(default=False, metadata={"help": "whether to use asr"})
 
     def __post_init__(self):
         self.video_frames_sample = self.video_frames_sample.lower()
@@ -141,6 +140,16 @@ class ImageModificationProcessorArguments(BasePreprocessArguments):
     render_timestamp: bool = field(default=False, metadata={"help": "render timestamp"})
     sft_shift_by_one: bool = field(
         default=False, metadata={"help": "SFT data_processor shift-by-one"}
+    )
+    sft_replace_ids: bool = field(
+        default=False,
+        metadata={"help": "SFT replace sep_token with eos_token in input_ids"},
+    )
+    sft_image_rescale: bool = field(
+        default=False, metadata={"help": "SFT delay image rescale"}
+    )
+    sft_image_normalize: bool = field(
+        default=False, metadata={"help": "SFT delay image normalize"}
     )
 
     def __post_init__(self):
