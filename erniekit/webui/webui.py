@@ -71,7 +71,6 @@ def create_ui():
             manager.setup_language_switching(language, demo, alert)
 
         manager.setup_component_tracking(demo)
-
     return demo
 
 
